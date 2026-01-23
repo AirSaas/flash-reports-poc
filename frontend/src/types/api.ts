@@ -27,6 +27,10 @@ export interface EvaluationResult {
   accuracy: number
   formatting: number
   issues: string[]
+  accuracyIssues?: string[]
+  emptyFields?: string[]
+  projectsFound?: number
+  projectsExpected?: number
   recommendation: 'pass' | 'regenerate'
 }
 
@@ -46,7 +50,6 @@ export interface SessionResponse {
   mapping: {
     template_path: string
     mapping_json: MappingJson | null
-    fetched_data: Record<string, unknown> | null
     long_text_strategy: string | null
   } | null
 }

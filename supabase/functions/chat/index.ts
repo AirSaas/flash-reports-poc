@@ -145,7 +145,7 @@ serve(async (req) => {
 
   try {
     const sessionId = getSessionId(req)
-    const { message } = await req.json()
+    const { message, stream = false } = await req.json()
 
     if (!message) {
       throw new Error('Message is required')
@@ -260,10 +260,137 @@ serve(async (req) => {
       }
     }
 
-    console.log('Calling Claude with PPTX skill...')
+    console.log('Calling Claude with PPTX skill...', stream ? '(streaming)' : '(non-streaming)')
 
-    // Call Claude with PPTX skill for analyzing the template
-    // Include all required beta headers: code-execution, skills, and files-api
+    // Streaming response
+    if (stream) {
+      const encoder = new TextEncoder()
+
+      const streamResponse = new ReadableStream({
+        async start(controller) {
+          try {
+            let assistantMessage = ''
+
+            // Create streaming request
+            const streamingResponse = await client.beta.messages.stream({
+              model: "claude-sonnet-4-5-20250929",
+              max_tokens: 8192,
+              betas: ["code-execution-2025-08-25", "skills-2025-10-02", "files-api-2025-04-14"],
+              system: SYSTEM_PROMPT,
+              container: {
+                skills: [
+                  {
+                    type: "anthropic",
+                    skill_id: "pptx",
+                    version: "latest"
+                  }
+                ]
+              },
+              messages: apiMessages,
+              tools: [
+                {
+                  type: "code_execution_20250825",
+                  name: "code_execution"
+                }
+              ]
+            })
+
+            // Process stream events
+            for await (const event of streamingResponse) {
+              if (event.type === 'content_block_delta') {
+                const delta = event.delta as { type: string; text?: string }
+                if (delta.type === 'text_delta' && delta.text) {
+                  assistantMessage += delta.text
+                  // Send SSE event
+                  const sseData = JSON.stringify({ type: 'delta', text: delta.text })
+                  controller.enqueue(encoder.encode(`data: ${sseData}\n\n`))
+                }
+              } else if (event.type === 'message_stop') {
+                // Message complete - save to database
+                chatHistory.push({ role: 'assistant', content: assistantMessage })
+
+                // Detect if mapping is complete (look for JSON in response)
+                let mappingComplete = false
+                let mappingJson = null
+                let mappingId = null
+
+                const jsonMatch = assistantMessage.match(/```json\n([\s\S]*?)\n```/)
+                if (jsonMatch) {
+                  try {
+                    mappingJson = JSON.parse(jsonMatch[1])
+                    if (mappingJson.slides && mappingJson.missing_fields !== undefined) {
+                      mappingComplete = true
+                    }
+                  } catch (_e) {
+                    // Not valid JSON, continue conversation
+                  }
+                }
+
+                // Update session
+                await supabase
+                  .from('sessions')
+                  .update({
+                    chat_history: chatHistory,
+                    current_step: mappingComplete ? 'long_text_options' : 'mapping',
+                  })
+                  .eq('id', sessionId)
+
+                // If mapping is complete, save it and get the ID
+                if (mappingComplete && mappingJson) {
+                  const { data: mappingData, error: mappingError } = await supabase
+                    .from('mappings')
+                    .upsert(
+                      {
+                        session_id: sessionId,
+                        mapping_json: mappingJson,
+                        template_path: session.template_path || '',
+                      },
+                      { onConflict: 'session_id' }
+                    )
+                    .select('id')
+                    .single()
+
+                  if (!mappingError && mappingData) {
+                    mappingId = mappingData.id
+                  }
+                }
+
+                // Send final event with complete data
+                const finalData = JSON.stringify({
+                  type: 'done',
+                  message: assistantMessage,
+                  mappingComplete,
+                  mappingJson,
+                  mappingId
+                })
+                controller.enqueue(encoder.encode(`data: ${finalData}\n\n`))
+              }
+            }
+
+            controller.close()
+          } catch (error) {
+            console.error('Stream error:', error)
+            const errorData = JSON.stringify({
+              type: 'error',
+              error: error instanceof Error ? error.message : 'Unknown error'
+            })
+            controller.enqueue(encoder.encode(`data: ${errorData}\n\n`))
+            controller.close()
+          }
+        }
+      })
+
+      return new Response(streamResponse, {
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+        },
+      })
+    }
+
+    // Non-streaming response (original behavior)
     const response = await client.beta.messages.create({
       model: "claude-sonnet-4-5-20250929",
       max_tokens: 8192,

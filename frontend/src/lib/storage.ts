@@ -6,7 +6,9 @@ const DEFAULT_SESSION_STATE: SessionState = {
   engine: null,
   lastTemplateId: null,
   lastMappingId: null,
+  lastFetchedDataId: null,
   hasFetchedData: false,
+  projectsConfig: null,
 }
 
 export function getStoredSession(): SessionState {
@@ -40,12 +42,16 @@ export function clearStoredSession(): void {
 }
 
 export function createNewSession(): SessionState {
+  // Preserve projectsConfig, lastTemplateId, lastMappingId and lastFetchedDataId when creating new session
+  const existingSession = getStoredSession()
   const newSession: SessionState = {
     sessionId: crypto.randomUUID(),
     engine: null,
-    lastTemplateId: null,
-    lastMappingId: null,
+    lastTemplateId: existingSession.lastTemplateId, // Keep existing template reference
+    lastMappingId: existingSession.lastMappingId, // Keep existing mapping reference
+    lastFetchedDataId: existingSession.lastFetchedDataId, // Keep existing fetched data reference
     hasFetchedData: false,
+    projectsConfig: existingSession.projectsConfig, // Keep existing config
   }
   setStoredSession(newSession)
   return newSession

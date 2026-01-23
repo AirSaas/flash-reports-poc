@@ -1,13 +1,17 @@
+import { cn } from '@lib/utils'
+
 interface UseLastMappingProps {
   hasFetchedData: boolean
   onUseLastMapping: () => void
   onCreateNew: () => void
+  loading?: boolean
 }
 
 export function UseLastMapping({
   hasFetchedData,
   onUseLastMapping,
   onCreateNew,
+  loading = false,
 }: UseLastMappingProps) {
   return (
     <div className="space-y-4">
@@ -42,13 +46,25 @@ export function UseLastMapping({
       <div className="flex gap-3">
         <button
           onClick={onUseLastMapping}
-          className="flex-1 bg-blue-600 text-white rounded-lg py-2 px-4 font-medium hover:bg-blue-700 transition-colors"
+          disabled={loading}
+          className={cn(
+            'flex-1 rounded-lg py-2 px-4 font-medium transition-colors',
+            loading
+              ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              : 'bg-blue-600 text-white hover:bg-blue-700'
+          )}
         >
-          Use Previous Mapping
+          {loading ? 'Loading...' : 'Use Previous Mapping'}
         </button>
         <button
           onClick={onCreateNew}
-          className="flex-1 border border-gray-300 text-gray-700 rounded-lg py-2 px-4 font-medium hover:bg-gray-50 transition-colors"
+          disabled={loading}
+          className={cn(
+            'flex-1 rounded-lg py-2 px-4 font-medium transition-colors',
+            loading
+              ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200'
+              : 'border border-gray-300 text-gray-700 hover:bg-gray-50'
+          )}
         >
           Create New Mapping
         </button>

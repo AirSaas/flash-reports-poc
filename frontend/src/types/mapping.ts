@@ -22,7 +22,6 @@ export interface Mapping {
   session_id: string
   template_path: string
   mapping_json: MappingJson | null
-  fetched_data: Record<string, unknown> | null
   long_text_strategy: 'summarize' | 'ellipsis' | 'omit' | null
   created_at: string
 }

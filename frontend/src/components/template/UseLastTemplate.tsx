@@ -1,13 +1,17 @@
+import { cn } from '@lib/utils'
+
 interface UseLastTemplateProps {
   lastTemplateId: string
   onUseLastTemplate: () => void
   onUploadNew: () => void
+  loading?: boolean
 }
 
 export function UseLastTemplate({
   lastTemplateId,
   onUseLastTemplate,
   onUploadNew,
+  loading = false,
 }: UseLastTemplateProps) {
   const fileName = lastTemplateId.split('/').pop() || lastTemplateId
 
@@ -29,13 +33,25 @@ export function UseLastTemplate({
       <div className="flex gap-3">
         <button
           onClick={onUseLastTemplate}
-          className="flex-1 bg-blue-600 text-white rounded-lg py-2 px-4 font-medium hover:bg-blue-700 transition-colors"
+          disabled={loading}
+          className={cn(
+            'flex-1 rounded-lg py-2 px-4 font-medium transition-colors',
+            loading
+              ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              : 'bg-blue-600 text-white hover:bg-blue-700'
+          )}
         >
-          Use Previous Template
+          {loading ? 'Loading...' : 'Use Previous Template'}
         </button>
         <button
           onClick={onUploadNew}
-          className="flex-1 border border-gray-300 text-gray-700 rounded-lg py-2 px-4 font-medium hover:bg-gray-50 transition-colors"
+          disabled={loading}
+          className={cn(
+            'flex-1 rounded-lg py-2 px-4 font-medium transition-colors',
+            loading
+              ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200'
+              : 'border border-gray-300 text-gray-700 hover:bg-gray-50'
+          )}
         >
           Upload New
         </button>

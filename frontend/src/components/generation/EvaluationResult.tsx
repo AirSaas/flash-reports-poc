@@ -13,7 +13,18 @@ export function EvaluationResult({
   onRegenerate,
   showRegenerate = false,
 }: EvaluationResultProps) {
-  const { score, completeness, accuracy, formatting, issues, recommendation } = evaluation
+  const {
+    score,
+    completeness,
+    accuracy,
+    formatting,
+    issues,
+    accuracyIssues,
+    emptyFields,
+    projectsFound,
+    projectsExpected,
+    recommendation,
+  } = evaluation
 
   return (
     <div className="space-y-4">
@@ -73,6 +84,24 @@ export function EvaluationResult({
             />
           </div>
         </div>
+        {/* Projects coverage */}
+        {projectsExpected !== undefined && projectsFound !== undefined && (
+          <div className="pt-2 border-t border-gray-200">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-gray-600">Projects Coverage</span>
+              <span
+                className={cn(
+                  'font-medium',
+                  projectsFound === projectsExpected ? 'text-green-600' : 'text-yellow-600'
+                )}
+              >
+                {projectsFound}/{projectsExpected} projects
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* General issues */}
         {issues.length > 0 && (
           <div className="pt-2 border-t border-gray-200">
             <p className="text-sm font-medium text-gray-700 mb-2">Issues Found:</p>
@@ -86,7 +115,39 @@ export function EvaluationResult({
             </ul>
           </div>
         )}
+
+        {/* Accuracy issues (data mismatches) */}
+        {accuracyIssues && accuracyIssues.length > 0 && (
+          <div className="pt-2 border-t border-gray-200">
+            <p className="text-sm font-medium text-red-700 mb-2">Data Accuracy Issues:</p>
+            <ul className="space-y-1">
+              {accuracyIssues.map((issue, index) => (
+                <li key={index} className="text-sm text-red-600 flex items-start gap-2">
+                  <span className="text-red-500">✗</span>
+                  {issue}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* Empty fields */}
+        {emptyFields && emptyFields.length > 0 && (
+          <div className="pt-2 border-t border-gray-200">
+            <p className="text-sm font-medium text-orange-700 mb-2">Empty Fields (data exists in source):</p>
+            <ul className="space-y-1">
+              {emptyFields.map((field, index) => (
+                <li key={index} className="text-sm text-orange-600 flex items-start gap-2">
+                  <span className="text-orange-500">○</span>
+                  {field}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
+
+      {/* Regenerate button */}
       {showRegenerate && recommendation === 'regenerate' && onRegenerate && (
         <button
           onClick={onRegenerate}

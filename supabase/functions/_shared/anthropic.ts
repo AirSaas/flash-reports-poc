@@ -8,41 +8,16 @@ export function getAnthropicClient(): Anthropic {
   return new Anthropic({ apiKey })
 }
 
-// Lista fija de proyectos del workspace aqme-corp-
-export const AIRSAAS_PROJECTS = {
-  workspace: 'aqme-corp-',
-  projects: [
-    {
-      id: '7325bcd3-3998-442b-909e-e5bf6896a5d8',
-      name: "Mise en place d'un outil de com' inApp vers nos utilisateurs",
-    },
-    {
-      id: 'e15a49fb-2255-41d5-a7d3-45f1f6ac182e',
-      name: 'Remplacement du système de paiement',
-    },
-    {
-      id: '387cb18b-93ec-4bf5-8935-0bba96abdb5b',
-      short_id: 'AQM-P13',
-      name: 'Lancement du marché Espagnol',
-    },
-    {
-      id: 'eb70f870-7097-4dfa-bcb0-dc9b34a7cf4f',
-      short_id: 'AQM-P8',
-      name: 'Management de la gestion des stocks',
-    },
-    {
-      id: '73f7942e-c072-4437-8f01-9610bc3fa56f',
-      name: 'Ticket restau dématérialisés',
-    },
-    {
-      id: '013f9d4a-857c-427b-9c90-1b70e667b54c',
-      name: 'Industrialisation de nos KPI métier',
-    },
-    {
-      id: '5829eb21-8b7d-4627-ab86-7309ea0ca901',
-      name: 'Nouveau plan de compétence',
-    },
-  ],
+// Project config interface - projects are configured from the frontend
+interface ProjectItem {
+  id: string
+  name: string
+  short_id?: string
+}
+
+interface ProjectsConfig {
+  workspace: string
+  projects: ProjectItem[]
 }
 
 // Datos de referencia que se cachean
@@ -258,22 +233,26 @@ export async function fetchAirSaasProjectData(projectId: string): Promise<Record
   return results
 }
 
-export async function fetchAllProjectsData(): Promise<Record<string, unknown>[]> {
+export async function fetchAllProjectsData(projectsConfig: ProjectsConfig): Promise<Record<string, unknown>[]> {
   const apiKey = Deno.env.get('AIRSAAS_API_KEY')
   if (!apiKey) {
     throw new Error('Missing AIRSAAS_API_KEY - cannot fetch project data')
   }
 
+  if (!projectsConfig || !projectsConfig.projects || projectsConfig.projects.length === 0) {
+    throw new Error('No projects configured - projectsConfig is required')
+  }
+
   const allData: Record<string, unknown>[] = []
 
-  for (const project of AIRSAAS_PROJECTS.projects) {
+  for (const project of projectsConfig.projects) {
     try {
       const projectData = await fetchAirSaasProjectData(project.id)
       allData.push({
         ...projectData,
         _metadata: {
           id: project.id,
-          short_id: (project as { short_id?: string }).short_id,
+          short_id: project.short_id,
           name: project.name,
         },
       })
@@ -282,7 +261,7 @@ export async function fetchAllProjectsData(): Promise<Record<string, unknown>[]>
       allData.push({
         _metadata: {
           id: project.id,
-          short_id: (project as { short_id?: string }).short_id,
+          short_id: project.short_id,
           name: project.name,
           error: String(error),
         },
@@ -299,7 +278,7 @@ export async function fetchAllProjectsData(): Promise<Record<string, unknown>[]>
  */
 export function compressProjectData(
   data: Record<string, unknown>[],
-  maxTextLength = 200
+  maxTextLength = 150
 ): Record<string, unknown>[] {
   // Campos a eliminar completamente (metadata innecesaria)
   const fieldsToRemove = [
@@ -310,10 +289,18 @@ export function compressProjectData(
     'permissions', 'can_edit', 'can_delete', 'can_view',
     'is_active', 'is_archived', 'is_deleted', 'is_template',
     'sort_order', 'position', 'order', 'rank',
+    // Más campos a eliminar para reducir tamaño
+    'id', 'type', 'locale', 'timezone', 'language',
+    'metadata', 'settings', 'config', 'options', 'preferences',
+    'tags', 'labels', 'categories', 'classification',
+    'history', 'logs', 'audit', 'versions', 'revisions',
+    'attachments', 'files', 'documents', 'media',
+    'links', 'references', 'related', 'associations',
+    'custom_fields', 'extra', 'additional', 'misc',
   ]
 
   // Campos de texto largo a truncar
-  const longTextFields = ['description', 'content', 'body', 'notes', 'comment', 'summary', 'details']
+  const longTextFields = ['description', 'content', 'body', 'notes', 'comment', 'summary', 'details', 'text']
 
   function truncateText(text: string, maxLen: number): string {
     if (text.length <= maxLen) return text
@@ -321,17 +308,17 @@ export function compressProjectData(
   }
 
   function simplifyObject(obj: unknown, depth = 0): unknown {
-    if (depth > 5) return '[nested]' // Evitar recursión profunda
+    if (depth > 4) return '[nested]' // Reducir profundidad máxima
 
     if (obj === null || obj === undefined) return null
 
     if (Array.isArray(obj)) {
-      // Limitar arrays largos
-      const maxItems = depth === 0 ? 50 : 10
+      // Limitar arrays más agresivamente
+      const maxItems = depth === 0 ? 20 : 5
       const limited = obj.slice(0, maxItems)
       const simplified = limited.map(item => simplifyObject(item, depth + 1))
       if (obj.length > maxItems) {
-        return [...simplified, `[+${obj.length - maxItems} more items]`]
+        return [...simplified, `[+${obj.length - maxItems} more]`]
       }
       return simplified
     }
@@ -346,12 +333,16 @@ export function compressProjectData(
         // Saltar campos que empiezan con underscore (excepto _metadata)
         if (key.startsWith('_') && key !== '_metadata') continue
 
+        // Saltar objetos vacíos y arrays vacíos
+        if (Array.isArray(value) && value.length === 0) continue
+        if (typeof value === 'object' && value !== null && Object.keys(value).length === 0) continue
+
         // Truncar textos largos
         if (typeof value === 'string' && longTextFields.includes(key)) {
           result[key] = truncateText(value, maxTextLength)
-        } else if (typeof value === 'string' && value.length > 500) {
-          // Truncar cualquier string muy largo
-          result[key] = truncateText(value, 500)
+        } else if (typeof value === 'string' && value.length > 200) {
+          // Truncar cualquier string largo
+          result[key] = truncateText(value, 200)
         } else {
           result[key] = simplifyObject(value, depth + 1)
         }
@@ -363,24 +354,10 @@ export function compressProjectData(
     return obj
   }
 
-  // También eliminamos reference_data duplicado entre proyectos
-  const seenReferenceData = new Set<string>()
-
-  return data.map((project, index) => {
+  // Eliminar reference_data de todos los proyectos (no es necesario para generación)
+  return data.map((project) => {
     const simplified = simplifyObject(project) as Record<string, unknown>
-
-    // Solo incluir reference_data en el primer proyecto
-    if (index > 0 && simplified.reference_data) {
-      const refKey = JSON.stringify(simplified.reference_data)
-      if (seenReferenceData.has(refKey)) {
-        delete simplified.reference_data
-      } else {
-        seenReferenceData.add(refKey)
-      }
-    } else if (simplified.reference_data) {
-      seenReferenceData.add(JSON.stringify(simplified.reference_data))
-    }
-
+    delete simplified.reference_data
     return simplified
   })
 }

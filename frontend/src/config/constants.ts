@@ -7,7 +7,9 @@ export const STORAGE_KEYS = {
 
 export const STEP_ORDER = [
   'select_engine',
+  'configure_projects',
   'upload_template',
+  'check_fetched_data',
   'check_mapping',
   'mapping',
   'long_text_options',

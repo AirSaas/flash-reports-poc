@@ -1,9 +1,12 @@
+import { cn } from '@lib/utils'
+
 interface TemplatePreviewProps {
   templatePath: string
   onContinue: () => void
+  loading?: boolean
 }
 
-export function TemplatePreview({ templatePath, onContinue }: TemplatePreviewProps) {
+export function TemplatePreview({ templatePath, onContinue, loading = false }: TemplatePreviewProps) {
   const fileName = templatePath.split('/').pop() || templatePath
 
   return (
@@ -20,9 +23,15 @@ export function TemplatePreview({ templatePath, onContinue }: TemplatePreviewPro
       </div>
       <button
         onClick={onContinue}
-        className="w-full bg-blue-600 text-white rounded-lg py-2 px-4 font-medium hover:bg-blue-700 transition-colors"
+        disabled={loading}
+        className={cn(
+          'w-full rounded-lg py-2 px-4 font-medium transition-colors',
+          loading
+            ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+            : 'bg-blue-600 text-white hover:bg-blue-700'
+        )}
       >
-        Continue to Mapping
+        {loading ? 'Loading...' : 'Continue to Mapping'}
       </button>
     </div>
   )

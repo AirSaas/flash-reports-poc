@@ -7,6 +7,7 @@ interface LongTextOptionsProps {
   onSelect: (strategy: LongTextStrategy) => void
   onContinue: () => void
   disabled?: boolean
+  loading?: boolean
 }
 
 export function LongTextOptions({
@@ -14,6 +15,7 @@ export function LongTextOptions({
   onSelect,
   onContinue,
   disabled = false,
+  loading = false,
 }: LongTextOptionsProps) {
   return (
     <div className="space-y-4">
@@ -42,10 +44,10 @@ export function LongTextOptions({
       </div>
       <button
         onClick={onContinue}
-        disabled={!selected || disabled}
+        disabled={!selected || disabled || loading}
         className="w-full bg-blue-600 text-white rounded-lg py-2 px-4 font-medium hover:bg-blue-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
       >
-        Continue to Generation
+        {loading ? 'Loading...' : 'Continue to Generation'}
       </button>
     </div>
   )

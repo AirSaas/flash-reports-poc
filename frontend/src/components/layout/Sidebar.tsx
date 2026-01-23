@@ -5,11 +5,14 @@ import type { Step } from '@appTypes/index'
 interface SidebarProps {
   currentStep: Step
   completedSteps: Step[]
+  sessionId?: string
 }
 
 const STEP_LABELS: Record<Step, string> = {
   select_engine: 'Select Engine',
+  configure_projects: 'Configure Project',
   upload_template: 'Upload Template',
+  check_fetched_data: 'Project Data',
   check_mapping: 'Check Mapping',
   mapping: 'Field Mapping',
   long_text_options: 'Text Options',
@@ -19,9 +22,9 @@ const STEP_LABELS: Record<Step, string> = {
 }
 
 // Steps that can be skipped/hidden in sidebar when not used
-const SKIPPABLE_STEPS: Step[] = ['check_mapping']
+const SKIPPABLE_STEPS: Step[] = ['check_fetched_data', 'check_mapping']
 
-export function Sidebar({ currentStep, completedSteps }: SidebarProps) {
+export function Sidebar({ currentStep, completedSteps, sessionId }: SidebarProps) {
   const currentIndex = STEP_ORDER.indexOf(currentStep)
 
   // Filter out skippable steps unless they are the current step
@@ -30,8 +33,8 @@ export function Sidebar({ currentStep, completedSteps }: SidebarProps) {
   )
 
   return (
-    <aside className="w-64 bg-gray-50 border-r border-gray-200 p-4">
-      <nav className="space-y-2">
+    <aside className="w-64 bg-gray-50 border-r border-gray-200 p-4 flex flex-col">
+      <nav className="space-y-2 flex-1">
         {visibleSteps.map((step, index) => {
           const isCompleted = completedSteps.includes(step)
           const isCurrent = step === currentStep
@@ -63,6 +66,15 @@ export function Sidebar({ currentStep, completedSteps }: SidebarProps) {
           )
         })}
       </nav>
+
+      {/* Session ID for debugging */}
+      {sessionId && (
+        <div className="pt-4 border-t border-gray-200 mt-4">
+          <p className="text-[10px] text-gray-400 font-mono break-all">
+            {sessionId}
+          </p>
+        </div>
+      )}
     </aside>
   )
 }

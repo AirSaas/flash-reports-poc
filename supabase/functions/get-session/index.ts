@@ -43,6 +43,40 @@ serve(async (req) => {
       )
     }
 
+    // Handle get_fetched_data_info action
+    if (body.action === 'get_fetched_data_info') {
+      const { data: session, error: sessionError } = await supabase
+        .from('sessions')
+        .select('fetched_projects_data')
+        .eq('id', sessionId)
+        .single()
+
+      if (sessionError || !session) {
+        return new Response(
+          JSON.stringify({ projectCount: 0, fetchedAt: null }),
+          {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          }
+        )
+      }
+
+      const fetchedData = session.fetched_projects_data as {
+        fetched_at?: string
+        project_count?: number
+        successful_count?: number
+      } | null
+
+      return new Response(
+        JSON.stringify({
+          projectCount: fetchedData?.successful_count || fetchedData?.project_count || 0,
+          fetchedAt: fetchedData?.fetched_at || null,
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      )
+    }
+
     // Get session data
     const { data: session, error: sessionError } = await supabase
       .from('sessions')
@@ -72,7 +106,6 @@ serve(async (req) => {
           ? {
               template_path: mapping.template_path,
               mapping_json: mapping.mapping_json,
-              fetched_data: mapping.fetched_data,
               long_text_strategy: mapping.long_text_strategy,
             }
           : null,

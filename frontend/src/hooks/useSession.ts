@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import type { SessionState, Engine, Step } from '@appTypes/index'
+import type { SessionState, Engine, Step, ProjectsConfig } from '@appTypes/index'
 import type { SessionResponse } from '@appTypes/api'
 import { getStoredSession, setStoredSession, createNewSession } from '@lib/storage'
 import { invokeFunction } from '@lib/supabase'
@@ -26,8 +26,16 @@ export function useSession() {
     setSession((prev) => ({ ...prev, lastMappingId: mappingId }))
   }, [])
 
+  const setLastFetchedDataId = useCallback((fetchedDataId: string) => {
+    setSession((prev) => ({ ...prev, lastFetchedDataId: fetchedDataId }))
+  }, [])
+
   const setHasFetchedData = useCallback((hasFetchedData: boolean) => {
     setSession((prev) => ({ ...prev, hasFetchedData }))
+  }, [])
+
+  const setProjectsConfig = useCallback((projectsConfig: ProjectsConfig) => {
+    setSession((prev) => ({ ...prev, projectsConfig }))
   }, [])
 
   const resetSession = useCallback(() => {
@@ -70,7 +78,9 @@ export function useSession() {
     setEngine,
     setLastTemplateId,
     setLastMappingId,
+    setLastFetchedDataId,
     setHasFetchedData,
+    setProjectsConfig,
     resetSession,
     fetchSessionState,
     goToStep,

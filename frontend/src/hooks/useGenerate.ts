@@ -1,7 +1,13 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import type { Engine } from '@appTypes/index'
-import type { GenerateResponse, EvaluateResponse } from '@appTypes/api'
+import type { EvaluateResponse } from '@appTypes/api'
 import { invokeFunction } from '@lib/supabase'
+import {
+  checkJobStatus,
+  triggerJobProcessing,
+  createEvalJob,
+  triggerEvalJobProcessing,
+} from '@services/session.service'
 import { EVALUATION_THRESHOLD, MAX_ITERATIONS } from '@config/constants'
 import type { GenerationStep } from '@ui/generation'
 
@@ -9,6 +15,7 @@ interface GenerationResult {
   pptxUrl: string
   reportId: string
   iteration: number
+  prompt?: string
 }
 
 interface UseGenerateReturn {
@@ -19,12 +26,21 @@ interface UseGenerateReturn {
   error: string | null
   result: GenerationResult | null
   evaluation: EvaluateResponse | null
+  evaluationCount: number
   generate: () => Promise<GenerationResult | null>
   evaluate: (reportId: string) => Promise<EvaluateResponse | null>
+  reEvaluate: () => Promise<EvaluateResponse | null>
   generateWithEvaluation: () => Promise<GenerationResult | null>
 }
 
-export function useGenerate(sessionId: string, engine: Engine | null): UseGenerateReturn {
+const MAX_EVALUATIONS = 2
+
+// Polling configuration
+const POLL_INTERVAL = 3000 // 3 seconds
+const MAX_POLL_TIME_GENERATION = 3 * 60 * 1000 // 3 minutes max for generation
+const MAX_POLL_TIME_EVALUATION = 5 * 60 * 1000 // 5 minutes max for evaluation (Claude PPTX Skill is slow)
+
+export function useGenerate(sessionId: string, _engine: Engine | null): UseGenerateReturn {
   const [generating, setGenerating] = useState(false)
   const [evaluating, setEvaluating] = useState(false)
   const [fetching, setFetching] = useState(false)
@@ -32,49 +48,146 @@ export function useGenerate(sessionId: string, engine: Engine | null): UseGenera
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<GenerationResult | null>(null)
   const [evaluation, setEvaluation] = useState<EvaluateResponse | null>(null)
+  const [evaluationCount, setEvaluationCount] = useState(0)
+  const pollTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
+  /**
+   * Poll for generation job completion
+   */
+  const pollGenerationJobStatus = useCallback(
+    async (jobId: string, startTime: number): Promise<GenerationResult | null> => {
+      // Check if we've exceeded max poll time
+      if (Date.now() - startTime > MAX_POLL_TIME_GENERATION) {
+        throw new Error('Generation timed out. Please try again.')
+      }
+
+      const statusResult = await checkJobStatus(sessionId, jobId)
+
+      if (!statusResult.success || !statusResult.job) {
+        throw new Error(statusResult.error || 'Failed to check job status')
+      }
+
+      const job = statusResult.job
+
+      switch (job.status) {
+        case 'completed':
+          if (!job.result) {
+            throw new Error('Job completed but no result found')
+          }
+          return {
+            pptxUrl: job.result.pptxUrl!,
+            reportId: job.result.reportId!,
+            iteration: job.result.iteration!,
+            prompt: job.prompt,
+          }
+
+        case 'failed':
+          throw new Error(job.error || 'Generation failed')
+
+        case 'processing':
+          setCurrentStep('generating')
+          setFetching(false)
+          setGenerating(true)
+          // Continue polling
+          await new Promise((resolve) => {
+            pollTimeoutRef.current = setTimeout(resolve, POLL_INTERVAL)
+          })
+          return pollGenerationJobStatus(jobId, startTime)
+
+        case 'pending':
+        default:
+          // Continue polling
+          await new Promise((resolve) => {
+            pollTimeoutRef.current = setTimeout(resolve, POLL_INTERVAL)
+          })
+          return pollGenerationJobStatus(jobId, startTime)
+      }
+    },
+    [sessionId]
+  )
+
+  /**
+   * Poll for evaluation job completion
+   */
+  const pollEvaluationJobStatus = useCallback(
+    async (jobId: string, startTime: number): Promise<EvaluateResponse | null> => {
+      // Check if we've exceeded max poll time
+      if (Date.now() - startTime > MAX_POLL_TIME_EVALUATION) {
+        throw new Error('Evaluation timed out. Please try again.')
+      }
+
+      const statusResult = await checkJobStatus(sessionId, jobId)
+
+      if (!statusResult.success || !statusResult.job) {
+        throw new Error(statusResult.error || 'Failed to check evaluation job status')
+      }
+
+      const job = statusResult.job
+
+      switch (job.status) {
+        case 'completed':
+          if (!job.result || !job.result.evaluation) {
+            throw new Error('Evaluation completed but no result found')
+          }
+          return {
+            evaluation: job.result.evaluation,
+            shouldRegenerate: job.result.shouldRegenerate || false,
+          }
+
+        case 'failed':
+          throw new Error(job.error || 'Evaluation failed')
+
+        case 'processing':
+        case 'pending':
+        default:
+          // Continue polling
+          await new Promise((resolve) => {
+            pollTimeoutRef.current = setTimeout(resolve, POLL_INTERVAL)
+          })
+          return pollEvaluationJobStatus(jobId, startTime)
+      }
+    },
+    [sessionId]
+  )
 
   const generate = useCallback(async (): Promise<GenerationResult | null> => {
-    if (!engine) {
-      setError('No engine selected')
-      setCurrentStep('error')
-      return null
-    }
-
-    // Start with fetching state (data fetch happens in backend if needed)
+    // Start with fetching state
     setFetching(true)
     setCurrentStep('fetching')
     setError(null)
 
     try {
-      const functionName =
-        engine === 'claude-pptx' ? 'generate-claude-pptx' : 'generate-gamma'
+      // Always use generate-gamma (which returns a jobId)
+      const response = await invokeFunction<{
+        success: boolean
+        jobId?: string
+        error?: string
+      }>('generate-gamma', sessionId)
 
-      // After a brief moment, transition to generating state
-      // The backend does fetch + generate in one call
-      const fetchTimeout = setTimeout(() => {
-        setFetching(false)
-        setGenerating(true)
-        setCurrentStep('generating')
-      }, 2000) // Show fetching for 2 seconds minimum
-
-      const response = await invokeFunction<GenerateResponse>(functionName, sessionId)
-
-      // Clear timeout if response came back quickly
-      clearTimeout(fetchTimeout)
-      setFetching(false)
-      setGenerating(false)
-
-      if (!response.success) {
-        throw new Error(response.error || 'Generation failed')
+      if (!response.success || !response.jobId) {
+        throw new Error(response.error || 'Failed to create generation job')
       }
 
-      const generationResult: GenerationResult = {
-        pptxUrl: response.pptxUrl,
-        reportId: response.reportId,
-        iteration: 1,
+      console.log(`Gamma generation job created: ${response.jobId}`)
+
+      // Trigger job processing from the client (fire-and-forget)
+      triggerJobProcessing(response.jobId, 'gamma')
+
+      // Transition to generating state
+      setFetching(false)
+      setGenerating(true)
+      setCurrentStep('generating')
+
+      // Poll for completion
+      const startTime = Date.now()
+      const generationResult = await pollGenerationJobStatus(response.jobId, startTime)
+
+      if (!generationResult) {
+        throw new Error('Generation completed but no result returned')
       }
 
       setResult(generationResult)
+      setGenerating(false)
       return generationResult
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Generation failed'
@@ -84,9 +197,18 @@ export function useGenerate(sessionId: string, engine: Engine | null): UseGenera
     } finally {
       setFetching(false)
       setGenerating(false)
+      // Clear any pending poll timeout
+      if (pollTimeoutRef.current) {
+        clearTimeout(pollTimeoutRef.current)
+        pollTimeoutRef.current = null
+      }
     }
-  }, [sessionId, engine])
+  }, [sessionId, pollGenerationJobStatus])
 
+  /**
+   * Evaluate a report using async job-based evaluation with Claude PPTX Skill.
+   * Creates a job, triggers processing, and polls for completion.
+   */
   const evaluate = useCallback(
     async (reportId: string): Promise<EvaluateResponse | null> => {
       setEvaluating(true)
@@ -94,13 +216,30 @@ export function useGenerate(sessionId: string, engine: Engine | null): UseGenera
       setError(null)
 
       try {
-        const response = await invokeFunction<EvaluateResponse>('evaluate', sessionId, {
-          reportId,
-        })
+        // Create evaluation job
+        const createResult = await createEvalJob(sessionId, reportId)
 
-        setEvaluation(response)
+        if (!createResult.success || !createResult.jobId) {
+          throw new Error(createResult.error || 'Failed to create evaluation job')
+        }
+
+        console.log(`Evaluation job created: ${createResult.jobId}`)
+
+        // Trigger job processing (fire-and-forget)
+        triggerEvalJobProcessing(createResult.jobId)
+
+        // Poll for completion
+        const startTime = Date.now()
+        const evalResult = await pollEvaluationJobStatus(createResult.jobId, startTime)
+
+        if (!evalResult) {
+          throw new Error('Evaluation completed but no result returned')
+        }
+
+        setEvaluation(evalResult)
+        setEvaluationCount((prev) => prev + 1)
         setCurrentStep('done')
-        return response
+        return evalResult
       } catch (e) {
         const message = e instanceof Error ? e.message : 'Evaluation failed'
         setError(message)
@@ -108,14 +247,36 @@ export function useGenerate(sessionId: string, engine: Engine | null): UseGenera
         return null
       } finally {
         setEvaluating(false)
+        // Clear any pending poll timeout
+        if (pollTimeoutRef.current) {
+          clearTimeout(pollTimeoutRef.current)
+          pollTimeoutRef.current = null
+        }
       }
     },
-    [sessionId]
+    [sessionId, pollEvaluationJobStatus]
   )
+
+  const reEvaluate = useCallback(async (): Promise<EvaluateResponse | null> => {
+    if (!result?.reportId) {
+      setError('No report to re-evaluate')
+      return null
+    }
+
+    if (evaluationCount >= MAX_EVALUATIONS) {
+      setError('Maximum evaluations reached')
+      return null
+    }
+
+    return evaluate(result.reportId)
+  }, [result, evaluationCount, evaluate])
 
   const generateWithEvaluation = useCallback(async (): Promise<GenerationResult | null> => {
     let currentResult = await generate()
     if (!currentResult) return null
+
+    // Result is already set in generate(), so pptxUrl is available for download
+    // while evaluation runs
 
     let iteration = 1
 
@@ -135,7 +296,7 @@ export function useGenerate(sessionId: string, engine: Engine | null): UseGenera
       if (!regenerated) return currentResult
 
       currentResult = { ...regenerated, iteration }
-      setResult(currentResult)
+      // Result is already set in generate()
     }
 
     await evaluate(currentResult.reportId)
@@ -150,8 +311,10 @@ export function useGenerate(sessionId: string, engine: Engine | null): UseGenera
     error,
     result,
     evaluation,
+    evaluationCount,
     generate,
     evaluate,
+    reEvaluate,
     generateWithEvaluation,
   }
 }
