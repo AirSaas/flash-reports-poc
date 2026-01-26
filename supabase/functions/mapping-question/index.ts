@@ -5,26 +5,64 @@ import { getSupabaseClient, getSessionId } from "../_shared/supabase.ts"
 import { getAnthropicClient } from "../_shared/anthropic.ts"
 
 // Available AirSaas API fields that can be mapped
+// IMPORTANT: These paths must match the actual AirSaas API response structure
 const AVAILABLE_AIRSAAS_FIELDS = [
+  // Basic project info
   { id: 'project.name', label: 'Project Name', description: 'The name of the project' },
   { id: 'project.short_id', label: 'Project Short ID', description: 'Short identifier like AQM-P8' },
-  { id: 'project.description', label: 'Project Description', description: 'Project description text' },
-  { id: 'project.status.name', label: 'Project Status', description: 'Current status (active, on hold, etc.)' },
-  { id: 'project.mood.name', label: 'Project Mood', description: 'Mood indicator (sunny, cloudy, rainy, stormy)' },
-  { id: 'project.risk.name', label: 'Project Risk', description: 'Risk level (low, medium, high)' },
-  { id: 'project.owner.first_name', label: 'Owner First Name', description: 'Project owner first name' },
-  { id: 'project.owner.last_name', label: 'Owner Last Name', description: 'Project owner last name' },
-  { id: 'project.owner.email', label: 'Owner Email', description: 'Project owner email' },
+  { id: 'project.description_text', label: 'Project Description', description: 'Project description as plain text' },
+  { id: 'project.description', label: 'Project Description (Rich)', description: 'Project description with formatting' },
+
+  // Status fields (these are strings, not objects)
+  { id: 'project.status', label: 'Project Status', description: 'Current status (in_progress, finished, etc.)' },
+  { id: 'project.mood', label: 'Project Mood', description: 'Mood indicator (good, complicated, blocked, etc.)' },
+  { id: 'project.risk', label: 'Project Risk', description: 'Risk level (low, medium, high)' },
+
+  // Owner info (correct field names from AirSaas)
+  { id: 'project.owner.name', label: 'Owner Full Name', description: 'Project owner full name' },
+  { id: 'project.owner.given_name', label: 'Owner First Name', description: 'Project owner first name' },
+  { id: 'project.owner.family_name', label: 'Owner Last Name', description: 'Project owner last name' },
+  { id: 'project.owner.initials', label: 'Owner Initials', description: 'Project owner initials' },
+
+  // Dates (direct fields, not from milestones)
+  { id: 'project.start_date', label: 'Start Date', description: 'Project start date' },
+  { id: 'project.end_date', label: 'End Date', description: 'Project end date' },
+
+  // Budget (direct fields)
+  { id: 'project.budget_capex', label: 'Budget CAPEX', description: 'Capital expenditure budget' },
+  { id: 'project.budget_opex', label: 'Budget OPEX', description: 'Operational expenditure budget' },
+  { id: 'project.budget_capex_used', label: 'Budget CAPEX Used', description: 'Capital expenditure used' },
+  { id: 'project.budget_opex_used', label: 'Budget OPEX Used', description: 'Operational expenditure used' },
+
+  // Program
   { id: 'project.program.name', label: 'Program Name', description: 'Associated program name' },
+  { id: 'project.program.short_id', label: 'Program ID', description: 'Program short identifier' },
+
+  // Progress and effort
+  { id: 'project.progress', label: 'Progress', description: 'Project progress percentage' },
+  { id: 'project.milestone_progress', label: 'Milestone Progress', description: 'Milestone completion progress' },
+  { id: 'project.effort', label: 'Planned Effort', description: 'Planned effort value' },
+  { id: 'project.effort_used', label: 'Effort Used', description: 'Actual effort consumed' },
+
+  // Arrays (from top level, not project)
+  { id: 'milestones', label: 'Milestones', description: 'Array of milestones with dates and status' },
+  { id: 'members', label: 'Project Members', description: 'Array of project team members' },
+  { id: 'efforts', label: 'Team Efforts', description: 'Effort entries by team/period' },
+  { id: 'budget_values', label: 'Budget Values', description: 'Budget value entries' },
+  { id: 'attention_points', label: 'Attention Points', description: 'Items requiring attention' },
+  { id: 'decisions', label: 'Decisions', description: 'Project decisions with status' },
+
+  // Other project fields
   { id: 'project.goals', label: 'Project Goals', description: 'Array of project goals' },
   { id: 'project.teams', label: 'Project Teams', description: 'Array of associated teams' },
-  { id: 'project.milestones', label: 'Milestones', description: 'Array of milestones with dates and status' },
-  { id: 'project.members', label: 'Project Members', description: 'Array of project team members' },
-  { id: 'project.efforts', label: 'Team Efforts', description: 'Planned and actual effort values' },
-  { id: 'project.budget_lines', label: 'Budget Lines', description: 'Budget line items with names and amounts' },
-  { id: 'project.budget_values', label: 'Budget Values', description: 'Budget value entries' },
-  { id: 'project.attention_points', label: 'Attention Points', description: 'Items requiring attention' },
-  { id: 'project.decisions', label: 'Decisions', description: 'Project decisions with status' },
+  { id: 'project.importance', label: 'Importance', description: 'Project importance level' },
+  { id: 'project.gain_text', label: 'Expected Gains', description: 'Expected gains/benefits text' },
+
+  // Metadata
+  { id: '_metadata.name', label: 'Project Name (Meta)', description: 'Project name from metadata' },
+  { id: '_metadata.short_id', label: 'Project ID (Meta)', description: 'Short ID from metadata' },
+
+  // Skip option
   { id: 'none', label: 'No mapping (skip)', description: 'Leave this field empty' },
 ]
 

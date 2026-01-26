@@ -126,81 +126,74 @@ function formatValue(value: unknown, dataType?: string): string {
 }
 
 /**
- * Converts longTextStrategy to a clear instruction for Gamma
+ * Converts longTextStrategy to a concise instruction for Gamma
  */
 function getLongTextInstruction(strategy: string | null): string {
-  const baseInstruction = `## FORMATTING RULES (MUST FOLLOW)
-
-You are generating a professional portfolio presentation. Follow these rules strictly:
-
-### Long Text Handling Strategy: `
-
   switch (strategy) {
     case 'summarize':
-      return baseInstruction + `**SUMMARIZE**
-
-When you encounter any text field (descriptions, comments, notes, explanations, etc.) that contains more than 2 sentences:
-- Condense it into exactly 1-2 clear, concise sentences
-- Preserve the key information and main message
-- Remove redundant details and filler words
-- This applies to ALL text content in the presentation
-
-Example: "The project has been progressing well over the past quarter. We have completed several key milestones including the design phase and initial development. The team is working hard to meet the deadline. There have been some minor delays due to resource constraints but overall we are on track."
-→ Should become: "Project progressing well with design and initial development complete. Minor delays due to resource constraints but on track for deadline."`
-
+      return `**Long Text**: Summarize to 1-2 sentences, preserve key information only.`
     case 'ellipsis':
-      return baseInstruction + `**TRUNCATE WITH ELLIPSIS**
-
-When you encounter any text field (descriptions, comments, notes, explanations, etc.) that exceeds 100 characters:
-- Cut the text at approximately 100 characters
-- Add "..." at the end to indicate truncation
-- Try to cut at a natural word boundary when possible
-- This applies to ALL text content in the presentation
-
-Example: "The project has been progressing well over the past quarter with several milestones completed."
-→ Should become: "The project has been progressing well over the past quarter with several..."`
-
+      return `**Long Text**: Truncate at ~100 characters with "..." at word boundary.`
     case 'omit':
-      return baseInstruction + `**OMIT LONG TEXT**
-
-When you encounter any text field (descriptions, comments, notes, explanations, etc.) that exceeds 200 characters:
-- Completely remove/omit that text from the slide
-- Do not show truncated versions, just leave it out
-- Short text (under 200 characters) should be kept as-is
-- This applies to ALL text content in the presentation
-
-Example: A 500-character description should be completely omitted from the slide.`
-
+      return `**Long Text**: Omit any text exceeding 200 characters entirely.`
     default:
-      return baseInstruction + `**KEEP READABLE**
-
-Keep all text fields at a reasonable length for presentation slides:
-- Maximum 300 characters per text field
-- If longer, summarize or truncate as needed for readability
-- Prioritize clarity and visual cleanliness
-- This applies to ALL text content in the presentation`
+      return `**Long Text**: Keep under 300 characters, summarize if needed.`
   }
 }
 
 /**
- * Gets critical rules for the presentation generation
+ * Returns context, audience, and goal for the presentation
  */
-function getCriticalRules(): string {
-  return `
----
+function getContextSection(projectCount: number): string {
+  return `## CONTEXT & GOAL
 
-## CRITICAL RULES
+**Purpose**: Professional portfolio status report for executive stakeholders.
+**Objective**: Provide clear visibility into project health, progress, risks, and key metrics.
+**Audience**: Leadership team, project sponsors, and decision-makers.
+**Tone**: Professional, data-driven, concise. No fluff or filler content.
+**Scope**: ${projectCount} project${projectCount > 1 ? 's' : ''} in this portfolio review.`
+}
 
-**IMPORTANT - READ CAREFULLY:**
+/**
+ * Returns output specifications and constraints
+ */
+function getOutputSpecifications(): string {
+  return `## OUTPUT SPECIFICATIONS
 
-1. Use ONLY the data provided below - do NOT invent or fabricate any values
-2. If a field has no data in the prompt, you may use "N/A" or "TBD" as placeholder
-3. Follow the exact slide structure defined below for each project
-4. Apply the formatting rules above to all text content
-5. Each project gets its own set of slides following the template structure
+**Slide Density**:
+- Maximum 5-6 bullet points per slide
+- Keep bullet text concise (under 15 words each)
+- Use visual hierarchy: bold for labels, regular for values
 
----
-`
+**Visual Indicators** (use where appropriate):
+- ✅ or 🟢 for good/on-track status
+- 🟡 for warning/at-risk status
+- 🔴 for critical/blocked status
+
+**Formatting**:
+- Dates: "Jan 15, 2025" format
+- Numbers: Use thousands separator (1,234)
+- Percentages: Include % symbol`
+}
+
+/**
+ * Gets content constraints and rules (including negative prompts)
+ */
+function getContentConstraints(longTextStrategy: string | null): string {
+  return `## CONTENT CONSTRAINTS
+
+**Data Rules**:
+- Use ONLY the data provided below - NEVER invent or fabricate values
+- If a field has no data, use "N/A" or "—" as placeholder
+- Each project gets its own set of slides following the template structure
+${getLongTextInstruction(longTextStrategy)}
+
+**AVOID** (Negative Prompts):
+- Generic filler phrases ("as we all know", "it goes without saying")
+- Buzzwords without substance ("synergy", "leverage", "paradigm shift")
+- Redundant introductions ("This slide shows...", "Here we can see...")
+- Overly optimistic language not supported by data
+- Stock imagery descriptions or placeholder suggestions`
 }
 
 /**
@@ -446,6 +439,13 @@ ${budgetWithData.join('\n')}
  *
  * Uses the user-defined mapping from the Q&A flow to extract data
  * according to the template structure.
+ *
+ * Prompt structure follows best practices:
+ * 1. Context & Goal (audience, purpose, tone)
+ * 2. Output Specifications (density, visual indicators)
+ * 3. Content Constraints (data rules, negative prompts)
+ * 4. Slide Structure description
+ * 5. Actual project data
  */
 function buildGammaContent(
   mappingJson: MappingJson,
@@ -455,16 +455,30 @@ function buildGammaContent(
 ): string {
   const sections: string[] = []
 
-  // 1. Formatting rules
-  sections.push(getLongTextInstruction(longTextStrategy))
+  // 1. Context & Goal - LEAD with audience and purpose
+  sections.push(getContextSection(fetchedData.length))
 
-  // 2. Critical rules
-  sections.push(getCriticalRules())
+  // 2. Output Specifications - density, formatting, visual indicators
+  sections.push(getOutputSpecifications())
 
-  // 3. Summary slide (always included)
+  // 3. Content Constraints - data rules + negative prompts
+  sections.push(getContentConstraints(longTextStrategy))
+
+  // 4. Slide Structure description
+  sections.push(getSlideStructure(templateAnalysis))
+
+  // 5. Data separator
+  sections.push(`---
+
+## PROJECT DATA
+
+Below is the actual data to populate the presentation. Follow the slide structure above.
+`)
+
+  // 6. Summary slide (always included)
   sections.push(buildSummarySlide(fetchedData))
 
-  // 4. Project slides - use mapping if template analysis is available
+  // 7. Project slides - use mapping if template analysis is available
   if (templateAnalysis && templateAnalysis.slides && templateAnalysis.slides.length > 0) {
     console.log(`[buildGammaContent] Using template analysis with ${templateAnalysis.slides.length} slides`)
 
@@ -481,14 +495,40 @@ function buildGammaContent(
     sections.push(buildLegacyContent(fetchedData, mappingJson))
   }
 
-  // 5. Data Notes slide (missing fields)
-  if (!templateAnalysis) {
-    // Already included in legacy content
-  } else {
+  // 8. Data Notes slide (missing fields)
+  if (templateAnalysis) {
     sections.push(buildDataNotesSlide(mappingJson.missing_fields || []))
   }
 
   return sections.join('\n')
+}
+
+/**
+ * Describes the expected slide structure based on template analysis
+ */
+function getSlideStructure(templateAnalysis?: TemplateAnalysis): string {
+  if (!templateAnalysis || !templateAnalysis.slides || templateAnalysis.slides.length === 0) {
+    return `## SLIDE STRUCTURE
+
+**For each project, create**:
+1. **Overview Slide**: Project name, ID, status, mood, risk level, owner
+2. **Progress Slide**: Key milestones with dates and completion status
+3. **Budget Slide** (if data available): Budget lines with amounts
+
+**Summary Slide**: Include at the beginning with all projects listed.`
+  }
+
+  const slideDescriptions = templateAnalysis.slides.map((slide, index) => {
+    const fieldNames = slide.fields.map(f => f.name).join(', ')
+    return `${index + 1}. **${slide.title}**: ${fieldNames || 'General content'}`
+  }).join('\n')
+
+  return `## SLIDE STRUCTURE
+
+**For each project, create these slides** (based on template):
+${slideDescriptions}
+
+**Summary Slide**: Include at the beginning with all projects listed.`
 }
 
 async function waitForGammaGeneration(
