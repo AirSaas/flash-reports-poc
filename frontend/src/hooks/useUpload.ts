@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react'
 import { supabase } from '@lib/supabase'
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from '@config/constants'
+import { BACKEND_URL, SUPABASE_ANON_KEY } from '@config/constants'
 
 interface UseUploadReturn {
   uploading: boolean
@@ -46,7 +46,7 @@ export function useUpload(sessionId: string): UseUploadReturn {
         setProgress(70)
 
         const response = await fetch(
-          `${SUPABASE_URL}/functions/v1/upload-template`,
+          `${BACKEND_URL}/functions/v1/upload-template`,
           {
             method: 'POST',
             headers: {

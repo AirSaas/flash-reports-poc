@@ -1,14 +1,24 @@
 import { createClient } from '@supabase/supabase-js'
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from '@config/constants'
+import { BACKEND_URL, SUPABASE_STORAGE_URL, SUPABASE_ANON_KEY } from '@config/constants'
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+// Supabase client for Storage operations (uploads/downloads)
+export const supabase = createClient(SUPABASE_STORAGE_URL, SUPABASE_ANON_KEY)
 
-// Default timeout: 30 seconds, long operations: 5 minutes
+// Default timeout: 30 seconds, long operations: 1 hour
 const DEFAULT_TIMEOUT = 30000
-const LONG_OPERATION_TIMEOUT = 300000
+const LONG_OPERATION_TIMEOUT = 3600000
 
 // Functions that need longer timeout (AI operations, API calls, etc.)
-const LONG_TIMEOUT_FUNCTIONS = ['fetch-projects', 'analyze-template', 'mapping-question', 'generate-claude-pptx', 'generate-gamma', 'evaluate']
+const LONG_TIMEOUT_FUNCTIONS = [
+  'fetch-projects',
+  'analyze-template',
+  'mapping-question',
+  'mapping-batch',
+  'mapping-batch-submit',
+  'generate-claude-pptx',
+  'generate-gamma',
+  'evaluate',
+]
 
 export async function invokeFunction<T>(
   functionName: string,
@@ -20,7 +30,7 @@ export async function invokeFunction<T>(
   const timeoutId = setTimeout(() => controller.abort(), timeout)
 
   try {
-    const response = await fetch(`${SUPABASE_URL}/functions/v1/${functionName}`, {
+    const response = await fetch(`${BACKEND_URL}/functions/v1/${functionName}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -63,7 +73,7 @@ export async function invokeFunctionStream(
   body: Record<string, unknown>,
   onEvent: (event: StreamEvent) => void
 ): Promise<void> {
-  const response = await fetch(`${SUPABASE_URL}/functions/v1/${functionName}`, {
+  const response = await fetch(`${BACKEND_URL}/functions/v1/${functionName}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

@@ -1,0 +1,26 @@
+# Flash Reports Backend Dependencies
+
+# Web framework
+fastapi==0.109.2
+uvicorn[standard]==0.27.1
+
+# Anthropic SDK (latest for Files API beta support)
+anthropic>=0.50.0
+
+# Supabase (updated for httpx compatibility)
+supabase==2.10.0
+
+# Settings management
+pydantic-settings==2.1.0
+
+# HTTP client (let pip resolve version)
+httpx>=0.25.0,<1.0
+
+# WebSockets (required by supabase realtime)
+websockets>=13,<16
+
+# Async support
+python-multipart==0.0.9
+
+# Development
+python-dotenv==1.0.1

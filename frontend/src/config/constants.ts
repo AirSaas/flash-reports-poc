@@ -1,4 +1,8 @@
-export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string
+// Backend API URL (Render or Supabase Edge Functions)
+export const BACKEND_URL = import.meta.env.VITE_BACKEND_URL as string
+
+// Supabase Storage URL (always Supabase)
+export const SUPABASE_STORAGE_URL = import.meta.env.VITE_SUPABASE_STORAGE_URL as string
 export const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 
 export const STORAGE_KEYS = {

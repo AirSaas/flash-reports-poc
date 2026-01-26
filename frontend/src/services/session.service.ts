@@ -1,7 +1,7 @@
 import { invokeFunction } from '@lib/supabase'
 import type { SessionResponse } from '@appTypes/api'
 import type { LongTextStrategy } from '@appTypes/index'
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from '@config/constants'
+import { BACKEND_URL, SUPABASE_ANON_KEY } from '@config/constants'
 
 export async function getSession(sessionId: string): Promise<SessionResponse> {
   return invokeFunction<SessionResponse>('get-session', sessionId)
@@ -11,7 +11,7 @@ export async function updateLongTextStrategy(
   sessionId: string,
   strategy: LongTextStrategy
 ): Promise<{ success: boolean; error?: string }> {
-  const response = await fetch(`${SUPABASE_URL}/functions/v1/get-session`, {
+  const response = await fetch(`${BACKEND_URL}/functions/v1/get-session`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -36,7 +36,7 @@ export async function copyMapping(
   sessionId: string,
   sourceMappingId: string
 ): Promise<{ success: boolean; hasFetchedData?: boolean; error?: string }> {
-  const response = await fetch(`${SUPABASE_URL}/functions/v1/copy-mapping`, {
+  const response = await fetch(`${BACKEND_URL}/functions/v1/copy-mapping`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -59,7 +59,7 @@ export async function copyFetchedData(
   sessionId: string,
   sourceSessionId: string
 ): Promise<{ success: boolean; projectCount?: number; fetchedAt?: string; error?: string }> {
-  const response = await fetch(`${SUPABASE_URL}/functions/v1/copy-fetched-data`, {
+  const response = await fetch(`${BACKEND_URL}/functions/v1/copy-fetched-data`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -81,7 +81,7 @@ export async function copyFetchedData(
 export async function getFetchedDataInfo(
   sessionId: string
 ): Promise<{ success: boolean; projectCount?: number; fetchedAt?: string; error?: string }> {
-  const response = await fetch(`${SUPABASE_URL}/functions/v1/get-session`, {
+  const response = await fetch(`${BACKEND_URL}/functions/v1/get-session`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -119,7 +119,7 @@ export async function fetchProjects(
   sessionId: string,
   projectsConfig: ProjectsConfig
 ): Promise<{ success: boolean; projectCount?: number; error?: string }> {
-  const response = await fetch(`${SUPABASE_URL}/functions/v1/fetch-projects`, {
+  const response = await fetch(`${BACKEND_URL}/functions/v1/fetch-projects`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -175,7 +175,7 @@ export async function checkJobStatus(
   sessionId: string,
   jobId: string
 ): Promise<{ success: boolean; job?: JobStatus; error?: string }> {
-  const response = await fetch(`${SUPABASE_URL}/functions/v1/check-job-status`, {
+  const response = await fetch(`${BACKEND_URL}/functions/v1/check-job-status`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -203,7 +203,7 @@ export function triggerJobProcessing(jobId: string, engine: 'claude-pptx' | 'gam
 
   // Fire and forget - don't await, don't handle errors
   // The job will update its own status in the database
-  fetch(`${SUPABASE_URL}/functions/v1/${endpoint}`, {
+  fetch(`${BACKEND_URL}/functions/v1/${endpoint}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -224,7 +224,7 @@ export async function createEvalJob(
   sessionId: string,
   reportId: string
 ): Promise<{ success: boolean; jobId?: string; error?: string }> {
-  const response = await fetch(`${SUPABASE_URL}/functions/v1/create-eval-job`, {
+  const response = await fetch(`${BACKEND_URL}/functions/v1/create-eval-job`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -250,7 +250,7 @@ export async function createEvalJob(
 export function triggerEvalJobProcessing(jobId: string): void {
   // Fire and forget - don't await, don't handle errors
   // The job will update its own status in the database
-  fetch(`${SUPABASE_URL}/functions/v1/process-eval-job`, {
+  fetch(`${BACKEND_URL}/functions/v1/process-eval-job`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

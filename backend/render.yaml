@@ -1,0 +1,32 @@
+# Render Blueprint for Flash Reports Backend
+# https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: flash-reports-backend
+    env: docker
+    region: oregon  # or your preferred region
+    plan: starter   # or standard for production
+
+    # Build settings
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+
+    # Health check
+    healthCheckPath: /health
+
+    # Environment variables (set in Render dashboard or here)
+    envVars:
+      - key: SUPABASE_URL
+        sync: false  # Set manually in dashboard
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: CORS_ORIGINS
+        value: "*"  # Update for production
+      - key: DEBUG
+        value: "false"
+
+    # Auto-deploy on push to main branch
+    autoDeploy: true

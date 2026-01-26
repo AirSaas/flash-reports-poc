@@ -40,7 +40,7 @@ const POLL_INTERVAL = 3000 // 3 seconds
 const MAX_POLL_TIME_GENERATION = 3 * 60 * 1000 // 3 minutes max for generation
 const MAX_POLL_TIME_EVALUATION = 5 * 60 * 1000 // 5 minutes max for evaluation (Claude PPTX Skill is slow)
 
-export function useGenerate(sessionId: string, _engine: Engine | null): UseGenerateReturn {
+export function useGenerate(sessionId: string, engine: Engine | null): UseGenerateReturn {
   const [generating, setGenerating] = useState(false)
   const [evaluating, setEvaluating] = useState(false)
   const [fetching, setFetching] = useState(false)
@@ -157,21 +157,24 @@ export function useGenerate(sessionId: string, _engine: Engine | null): UseGener
     setError(null)
 
     try {
-      // Always use generate-gamma (which returns a jobId)
+      // Determine which endpoint to use based on engine
+      const functionName = engine === 'claude-pptx' ? 'generate-claude-pptx' : 'generate-gamma'
+      const engineType = engine === 'claude-pptx' ? 'claude-pptx' : 'gamma'
+
       const response = await invokeFunction<{
         success: boolean
         jobId?: string
         error?: string
-      }>('generate-gamma', sessionId)
+      }>(functionName, sessionId)
 
       if (!response.success || !response.jobId) {
         throw new Error(response.error || 'Failed to create generation job')
       }
 
-      console.log(`Gamma generation job created: ${response.jobId}`)
+      console.log(`${engineType} generation job created: ${response.jobId}`)
 
       // Trigger job processing from the client (fire-and-forget)
-      triggerJobProcessing(response.jobId, 'gamma')
+      triggerJobProcessing(response.jobId, engineType)
 
       // Transition to generating state
       setFetching(false)
@@ -203,7 +206,7 @@ export function useGenerate(sessionId: string, _engine: Engine | null): UseGener
         pollTimeoutRef.current = null
       }
     }
-  }, [sessionId, pollGenerationJobStatus])
+  }, [sessionId, engine, pollGenerationJobStatus])
 
   /**
    * Evaluate a report using async job-based evaluation with Claude PPTX Skill.

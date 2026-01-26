@@ -10,7 +10,7 @@ import { Header, Sidebar } from '@ui/layout'
 import { EngineSelector } from '@ui/engine'
 import { ProjectsConfig } from '@ui/projects'
 import { TemplateUpload, TemplatePreview, UseLastTemplate } from '@ui/template'
-import { UseLastMapping, UseLastFetchedData, MappingQuestion } from '@ui/mapping'
+import { UseLastMapping, UseLastFetchedData, MappingQuestion, BatchMappingEditor } from '@ui/mapping'
 import { LongTextOptions } from '@ui/options'
 import { GenerationProgress, EvaluationResult, DownloadButton } from '@ui/generation'
 
@@ -47,6 +47,12 @@ export function Home() {
     startMappingProcess,
     answerQuestion,
     resetMapping,
+    // Batch mapping
+    batchFields,
+    batchAllOptions,
+    batchLoading,
+    startBatchMappingProcess,
+    submitBatchMappings,
   } = useMapping(sessionId)
 
   const {
@@ -249,6 +255,19 @@ export function Home() {
     [answerQuestion]
   )
 
+  const handleBatchMappingSubmit = useCallback(
+    async (mappings: Record<string, string>) => {
+      const result = await submitBatchMappings(mappings)
+      if (result?.success) {
+        // Save mapping ID for reuse
+        setLastMappingId(result.mappingId)
+        markStepComplete('mapping')
+        goToStep('long_text_options')
+      }
+    },
+    [submitBatchMappings, setLastMappingId, markStepComplete, goToStep]
+  )
+
   const handleLongTextSelect = useCallback((strategy: LongTextStrategy) => {
     setLongTextStrategy(strategy)
   }, [])
@@ -351,11 +370,12 @@ export function Home() {
       if (currentStep === 'mapping' && templatePath && projectsConfig && !analysisStarted && !analyzing) {
         setAnalysisStarted(true)
         // Skip fetching projects if we're using cached data
-        await startMappingProcess(templatePath, projectsConfig, { skipFetchProjects: useCachedData })
+        // Use batch mapping process (new UX)
+        await startBatchMappingProcess(templatePath, projectsConfig, { skipFetchProjects: useCachedData })
       }
     }
     startProcess()
-  }, [currentStep, templatePath, projectsConfig, analysisStarted, analyzing, startMappingProcess, useCachedData])
+  }, [currentStep, templatePath, projectsConfig, analysisStarted, analyzing, startBatchMappingProcess, useCachedData])
 
   // Save lastFetchedDataId immediately when fetch completes (before analyze-template)
   // This ensures data is saved for reuse even if subsequent steps fail
@@ -542,17 +562,29 @@ export function Home() {
           )
         }
 
-        // Show loading state for questions
-        if (questionLoading && !currentQuestion) {
+        // Show loading state for batch mapping
+        if (batchLoading || (progressStep === 'loading_batch' && batchFields.length === 0)) {
           return (
             <div className="flex flex-col items-center justify-center py-12 space-y-4">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
-              <p className="text-gray-600">Loading next question...</p>
+              <p className="text-gray-600">Generating mapping suggestions...</p>
             </div>
           )
         }
 
-        // Show question
+        // Show batch mapping editor (new UX)
+        if (batchFields.length > 0) {
+          return (
+            <BatchMappingEditor
+              fields={batchFields}
+              allOptions={batchAllOptions}
+              onSubmit={handleBatchMappingSubmit}
+              loading={batchLoading}
+            />
+          )
+        }
+
+        // Legacy: Show question (fallback for old one-by-one flow)
         if (currentQuestion) {
           return (
             <MappingQuestion
@@ -635,9 +667,9 @@ export function Home() {
                 {evaluationCount < 2 && (
                   <button
                     onClick={reEvaluate}
-                    disabled={evaluating}
+                    disabled={evaluating || generating}
                     className={`w-full border rounded-lg py-2 px-4 font-medium transition-colors ${
-                      evaluating
+                      evaluating || generating
                         ? 'border-gray-300 text-gray-400 cursor-not-allowed'
                         : 'border-purple-600 text-purple-600 hover:bg-purple-50'
                     }`}
@@ -652,6 +684,26 @@ export function Home() {
                     )}
                   </button>
                 )}
+
+                {/* Regenerate PPTX button */}
+                <button
+                  onClick={handleRegenerate}
+                  disabled={generating || evaluating}
+                  className={`w-full border rounded-lg py-2 px-4 font-medium transition-colors ${
+                    generating || evaluating
+                      ? 'border-gray-300 text-gray-400 cursor-not-allowed'
+                      : 'border-green-600 text-green-600 hover:bg-green-50'
+                  }`}
+                >
+                  {generating ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-600" />
+                      Regenerating...
+                    </span>
+                  ) : (
+                    'Regenerate PPTX'
+                  )}
+                </button>
               </div>
             )}
             <button

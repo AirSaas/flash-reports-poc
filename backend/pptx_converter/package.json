@@ -1,0 +1,14 @@
+{
+  "name": "pptx-converter",
+  "version": "1.0.0",
+  "description": "Convert HTML slides to PPTX using pptxgenjs",
+  "type": "module",
+  "main": "convert.js",
+  "scripts": {
+    "convert": "node convert.js"
+  },
+  "dependencies": {
+    "pptxgenjs": "^3.12.0",
+    "jsdom": "^24.0.0"
+  }
+}

@@ -1,5 +1,5 @@
 import { supabase } from '@lib/supabase'
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from '@config/constants'
+import { BACKEND_URL, SUPABASE_ANON_KEY } from '@config/constants'
 import type { UploadResponse } from '@appTypes/api'
 
 export async function uploadTemplateFile(
@@ -21,7 +21,7 @@ export async function uploadTemplateFile(
     return { success: false, templatePath: '', error: uploadError.message }
   }
 
-  const response = await fetch(`${SUPABASE_URL}/functions/v1/upload-template`, {
+  const response = await fetch(`${BACKEND_URL}/functions/v1/upload-template`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
