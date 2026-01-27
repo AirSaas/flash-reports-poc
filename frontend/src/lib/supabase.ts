@@ -8,7 +8,16 @@ const DEFAULT_TIMEOUT = 30000
 const LONG_OPERATION_TIMEOUT = 300000
 
 // Functions that need longer timeout (AI operations, API calls, etc.)
-const LONG_TIMEOUT_FUNCTIONS = ['fetch-projects', 'analyze-template', 'mapping-question', 'generate-claude-pptx', 'generate-gamma', 'evaluate']
+const LONG_TIMEOUT_FUNCTIONS = [
+  'fetch-projects',
+  'analyze-template',
+  'mapping-question',
+  'mapping-batch',
+  'mapping-batch-submit',
+  'generate-claude-pptx',
+  'generate-gamma',
+  'evaluate',
+]
 
 export async function invokeFunction<T>(
   functionName: string,

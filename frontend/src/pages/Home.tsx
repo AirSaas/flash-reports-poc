@@ -10,7 +10,7 @@ import { Header, Sidebar } from '@ui/layout'
 import { EngineSelector } from '@ui/engine'
 import { ProjectsConfig } from '@ui/projects'
 import { TemplateUpload, TemplatePreview, UseLastTemplate } from '@ui/template'
-import { UseLastMapping, UseLastFetchedData, MappingQuestion } from '@ui/mapping'
+import { UseLastMapping, UseLastFetchedData, MappingQuestion, BatchMappingEditor } from '@ui/mapping'
 import { LongTextOptions } from '@ui/options'
 import { GenerationProgress, EvaluationResult, DownloadButton } from '@ui/generation'
 
@@ -44,9 +44,14 @@ export function Home() {
     mappingComplete,
     mappingId: newMappingId,
     fetchComplete,
-    startMappingProcess,
     answerQuestion,
     resetMapping,
+    // Batch mapping
+    batchFields,
+    batchAllOptions,
+    batchLoading,
+    startBatchMappingProcess,
+    submitBatchMappings,
   } = useMapping(sessionId)
 
   const {
@@ -249,6 +254,19 @@ export function Home() {
     [answerQuestion]
   )
 
+  const handleBatchMappingSubmit = useCallback(
+    async (mappings: Record<string, string>) => {
+      const result = await submitBatchMappings(mappings)
+      if (result?.success) {
+        // Save mapping ID for reuse
+        setLastMappingId(result.mappingId)
+        markStepComplete('mapping')
+        goToStep('long_text_options')
+      }
+    },
+    [submitBatchMappings, setLastMappingId, markStepComplete, goToStep]
+  )
+
   const handleLongTextSelect = useCallback((strategy: LongTextStrategy) => {
     setLongTextStrategy(strategy)
   }, [])
@@ -351,11 +369,12 @@ export function Home() {
       if (currentStep === 'mapping' && templatePath && projectsConfig && !analysisStarted && !analyzing) {
         setAnalysisStarted(true)
         // Skip fetching projects if we're using cached data
-        await startMappingProcess(templatePath, projectsConfig, { skipFetchProjects: useCachedData })
+        // Use batch mapping process (new UX)
+        await startBatchMappingProcess(templatePath, projectsConfig, { skipFetchProjects: useCachedData })
       }
     }
     startProcess()
-  }, [currentStep, templatePath, projectsConfig, analysisStarted, analyzing, startMappingProcess, useCachedData])
+  }, [currentStep, templatePath, projectsConfig, analysisStarted, analyzing, startBatchMappingProcess, useCachedData])
 
   // Save lastFetchedDataId immediately when fetch completes (before analyze-template)
   // This ensures data is saved for reuse even if subsequent steps fail
@@ -456,12 +475,12 @@ export function Home() {
             ? [
                 { key: 'fetching_projects', label: 'Using cached project data', icon: '✓', skipped: true },
                 { key: 'analyzing_template', label: 'Analyzing template with AI', icon: '🔍' },
-                { key: 'loading_questions', label: 'Preparing mapping questions', icon: '📋' },
+                { key: 'loading_batch', label: 'Generating mapping suggestions', icon: '📋' },
               ]
             : [
                 { key: 'fetching_projects', label: 'Downloading projects data from AirSaas', icon: '📥' },
                 { key: 'analyzing_template', label: 'Analyzing template with AI', icon: '🔍' },
-                { key: 'loading_questions', label: 'Preparing mapping questions', icon: '📋' },
+                { key: 'loading_batch', label: 'Generating mapping suggestions', icon: '📋' },
               ]
 
           const currentStepIndex = steps.findIndex(s => s.key === progressStep)
@@ -542,7 +561,19 @@ export function Home() {
           )
         }
 
-        // Show loading state for questions
+        // Show batch mapping editor (new UX)
+        if (batchFields.length > 0) {
+          return (
+            <BatchMappingEditor
+              fields={batchFields}
+              allOptions={batchAllOptions}
+              onSubmit={handleBatchMappingSubmit}
+              loading={batchLoading}
+            />
+          )
+        }
+
+        // Legacy: Show loading state for questions
         if (questionLoading && !currentQuestion) {
           return (
             <div className="flex flex-col items-center justify-center py-12 space-y-4">
@@ -552,7 +583,7 @@ export function Home() {
           )
         }
 
-        // Show question
+        // Legacy: Show question (fallback for old one-by-one flow)
         if (currentQuestion) {
           return (
             <MappingQuestion

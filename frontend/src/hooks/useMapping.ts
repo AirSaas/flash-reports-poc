@@ -58,12 +58,39 @@ interface FetchProjectsResponse {
 
 interface QuestionResponse extends QuestionState {}
 
+// Batch mapping types
+interface FieldWithSuggestion {
+  id: string
+  name: string
+  placeholder_text?: string
+  data_type?: string
+  location?: string
+  slide_number?: number
+  suggested_mapping: string
+  confidence: 'high' | 'medium' | 'low'
+  reasoning?: string
+}
+
+interface BatchMappingResponse {
+  fields: FieldWithSuggestion[]
+  allOptions: MappingOption[]
+  totalFields: number
+}
+
+interface BatchSubmitResponse {
+  success: boolean
+  mappingId: string
+  mappedFields: number
+  skippedFields: number
+}
+
 // Progress steps for the mapping process
 export type MappingProgressStep =
   | 'idle'
   | 'fetching_projects'
   | 'analyzing_template'
   | 'loading_questions'
+  | 'loading_batch'
   | 'ready'
   | 'error'
 
@@ -79,6 +106,11 @@ export function useMapping(sessionId: string) {
   const [mappingJson, setMappingJson] = useState<unknown>(null)
   const [fetchedProjectsCount, setFetchedProjectsCount] = useState<number>(0)
   const [fetchComplete, setFetchComplete] = useState(false)
+
+  // Batch mapping state
+  const [batchFields, setBatchFields] = useState<FieldWithSuggestion[]>([])
+  const [batchAllOptions, setBatchAllOptions] = useState<MappingOption[]>([])
+  const [batchLoading, setBatchLoading] = useState(false)
 
   const fetchProjectsData = useCallback(async (projectsConfig: ProjectsConfig) => {
     setProgressStep('fetching_projects')
@@ -207,6 +239,97 @@ export function useMapping(sessionId: string) {
     return getNextQuestion(answer)
   }, [getNextQuestion])
 
+  // ==========================================================================
+  // Batch Mapping Functions (New UX)
+  // ==========================================================================
+
+  const getBatchMappings = useCallback(async () => {
+    setBatchLoading(true)
+    setProgressStep('loading_batch')
+    setProgressMessage('Generating mapping suggestions with AI...')
+    setError(null)
+
+    try {
+      const response = await invokeFunction<BatchMappingResponse>(
+        'mapping-batch',
+        sessionId,
+        {}
+      )
+
+      if (response.fields && response.allOptions) {
+        setBatchFields(response.fields)
+        setBatchAllOptions(response.allOptions)
+        setProgressStep('ready')
+        setProgressMessage(`Generated suggestions for ${response.totalFields} fields`)
+        return response
+      } else {
+        throw new Error('Failed to get batch mapping suggestions')
+      }
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Failed to get batch mappings'
+      setError(message)
+      setProgressStep('error')
+      return null
+    } finally {
+      setBatchLoading(false)
+    }
+  }, [sessionId])
+
+  const submitBatchMappings = useCallback(async (mappings: Record<string, string>) => {
+    setBatchLoading(true)
+    setError(null)
+
+    try {
+      const response = await invokeFunction<BatchSubmitResponse>(
+        'mapping-batch-submit',
+        sessionId,
+        { mappings }
+      )
+
+      if (response.success) {
+        setMappingComplete(true)
+        setMappingId(response.mappingId)
+        setProgressMessage(`Saved ${response.mappedFields} mappings`)
+        return response
+      } else {
+        throw new Error('Failed to save batch mappings')
+      }
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Failed to save batch mappings'
+      setError(message)
+      return null
+    } finally {
+      setBatchLoading(false)
+    }
+  }, [sessionId])
+
+  const startBatchMappingProcess = useCallback(async (
+    templatePath: string,
+    projectsConfig: ProjectsConfig,
+    options?: { skipFetchProjects?: boolean }
+  ) => {
+    // Step 1: Fetch projects data (skip if already cached)
+    if (!options?.skipFetchProjects) {
+      const fetchSuccess = await fetchProjectsData(projectsConfig)
+      if (!fetchSuccess) return null
+    } else {
+      setProgressStep('analyzing_template')
+      setProgressMessage('Using cached project data...')
+    }
+
+    // Step 2: Analyze template
+    const analysisResult = await analyzeTemplate(templatePath)
+    if (!analysisResult) return null
+
+    // Step 3: Get batch suggestions (instead of one-by-one questions)
+    const batchResult = await getBatchMappings()
+    if (batchResult) {
+      return analysisResult
+    }
+
+    return null
+  }, [fetchProjectsData, analyzeTemplate, getBatchMappings])
+
   const resetMapping = useCallback(() => {
     setProgressStep('idle')
     setProgressMessage('')
@@ -218,12 +341,17 @@ export function useMapping(sessionId: string) {
     setError(null)
     setFetchedProjectsCount(0)
     setFetchComplete(false)
+    // Reset batch state
+    setBatchFields([])
+    setBatchAllOptions([])
+    setBatchLoading(false)
   }, [])
 
   // Computed state for backward compatibility
   const analyzing = progressStep === 'fetching_projects' ||
                     progressStep === 'analyzing_template' ||
-                    progressStep === 'loading_questions'
+                    progressStep === 'loading_questions' ||
+                    progressStep === 'loading_batch'
 
   return {
     // Progress tracking
@@ -242,12 +370,22 @@ export function useMapping(sessionId: string) {
     fetchedProjectsCount,
     fetchComplete,
 
-    // Actions
+    // Batch mapping data
+    batchFields,
+    batchAllOptions,
+    batchLoading,
+
+    // Actions (legacy one-by-one)
     startMappingProcess,
     fetchProjectsData,
     analyzeTemplate,
     getNextQuestion,
     answerQuestion,
     resetMapping,
+
+    // Actions (new batch)
+    startBatchMappingProcess,
+    getBatchMappings,
+    submitBatchMappings,
   }
 }
