@@ -358,7 +358,8 @@ async def process_html_generation(
                 html_template,
                 projects,
                 mapping_json,
-                use_claude=use_claude_population
+                use_claude=use_claude_population,
+                long_text_strategy=long_text_strategy
             )
         else:
             # Single project
@@ -366,7 +367,8 @@ async def process_html_generation(
                 final_html = populate_html_with_claude(
                     html_template,
                     projects[0],
-                    mapping_json
+                    mapping_json,
+                    long_text_strategy=long_text_strategy
                 )
             else:
                 import re
@@ -489,12 +491,14 @@ async def generate_direct(
 
         if len(projects) > 1:
             final_html = generate_multi_project_html(
-                html_template, projects, mapping_json, use_claude=use_claude
+                html_template, projects, mapping_json, use_claude=use_claude,
+                long_text_strategy=long_text_strategy
             )
         else:
             if use_claude:
                 final_html = populate_html_with_claude(
-                    html_template, projects[0], mapping_json
+                    html_template, projects[0], mapping_json,
+                    long_text_strategy=long_text_strategy
                 )
             else:
                 import re

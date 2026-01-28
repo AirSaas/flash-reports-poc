@@ -248,20 +248,49 @@ You create professional, visually balanced presentations that effectively commun
 
 <critical_css_rules>
 ABSOLUTE CSS RESTRICTIONS - NEVER VIOLATE:
-1. DO NOT use flexbox (display: flex) - FORBIDDEN
-2. DO NOT use CSS Grid (display: grid) - FORBIDDEN
+1. DO NOT use flexbox (display: flex, inline-flex) - COMPLETELY FORBIDDEN
+2. DO NOT use CSS Grid (display: grid, inline-grid) - COMPLETELY FORBIDDEN
 3. DO NOT add ANY new CSS rules to the <style> block
-4. DO NOT add inline styles that change layout (no style="display:..." etc)
+4. DO NOT add inline styles that change layout (no style="display: flex" etc)
 5. COPY the template's <style> block EXACTLY - character by character
 6. The template uses position: absolute - KEEP IT THAT WAY
+7. If the original template already has flex/grid in its <style>, keep it but NEVER add new ones
 </critical_css_rules>
+
+<overflow_prevention>
+OVERFLOW AND TEXT OVERLAP PREVENTION - MANDATORY:
+1. Text must NEVER overflow its container or overlap with adjacent elements
+2. For long text, ALWAYS reduce font-size inline BEFORE it can overflow
+3. Use overflow: hidden on containers that might receive long text
+4. Use word-wrap: break-word to prevent single long words from overflowing
+5. For multi-line containers, use overflow: hidden and max-height to clip excess
+6. NEVER let text from one element visually overlap or cover text from another
+7. When in doubt, make text smaller rather than risk overflow
+8. Test mentally: if the text is 2x longer than expected, would it still fit? If not, add safeguards
+</overflow_prevention>
+
+<icon_safety>
+ICONS AND SPECIAL CHARACTERS - CRITICAL:
+1. ONLY use basic ASCII characters and standard HTML entities
+2. DO NOT use emoji unicode characters (they render inconsistently across systems)
+3. DO NOT use icon fonts (FontAwesome, Material Icons, etc.) unless already in the template
+4. For status indicators use simple text or HTML symbols:
+   - Good: "OK", "Yes", "No", "-", "N/A", "&#9679;" (bullet), "&#9650;" (triangle up), "&#9660;" (triangle down)
+   - Good: "&#10003;" (checkmark), "&#10005;" (cross), "&#9733;" (star)
+   - BAD: emoji like 🟢🔴⚠️🎯✅❌ (these may render as broken/null characters in PDF)
+5. For colored indicators, use a <span> with background-color and border-radius instead of emoji:
+   Example: <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#22c55e;"></span>
+6. NEVER use characters from Private Use Area (U+E000–U+F8FF) or rare Unicode blocks
+</icon_safety>
 
 <what_you_CAN_do>
 You ARE ALLOWED to make these adjustments ONLY via inline styles on individual elements:
 1. Reduce font-size on long titles so they fit (e.g., style="font-size: 18px;")
-2. Add text-overflow: ellipsis for text that might overflow
-3. Adjust line-height if text is cramped
-4. These are the ONLY inline style changes permitted
+2. Add overflow: hidden and word-wrap: break-word to prevent overflow
+3. Add text-overflow: ellipsis with white-space: nowrap for single-line truncation
+4. Adjust line-height if text is cramped
+5. Add max-height with overflow: hidden for multi-line content
+6. These are the ONLY inline style changes permitted - NO layout changes (no flex, grid, float)
 </what_you_CAN_do>
 
 <html_template>
@@ -365,6 +394,8 @@ DATA FIELD PRIORITIES (what to show when available):
    - Keep the professional look of the template
 </population_task>
 
+{long_text_strategy_instructions}
+
 <output>
 Return ONLY the complete populated HTML document.
 - No explanations
@@ -374,10 +405,51 @@ Return ONLY the complete populated HTML document.
 </output>"""
 
 
+LONG_TEXT_STRATEGY_INSTRUCTIONS = {
+    'summarize': """<long_text_strategy>
+USER-SELECTED STRATEGY FOR LONG TEXT: **SUMMARIZE**
+This is a USER CHOICE that you MUST respect - it overrides your own judgment about text length.
+
+Rules:
+1. ANY text field longer than 2 sentences MUST be condensed to a maximum of 2 sentences
+2. Preserve the key meaning and most important information
+3. Write in the same language as the original text
+4. Do NOT simply truncate - actually summarize the content intelligently
+5. This applies to ALL text fields: descriptions, achievements, comments, notes, attention points, etc.
+6. Even if the text fits visually, still summarize it if it exceeds 2 sentences - the USER wants concise content
+</long_text_strategy>""",
+
+    'ellipsis': """<long_text_strategy>
+USER-SELECTED STRATEGY FOR LONG TEXT: **TRUNCATE WITH ELLIPSIS**
+This is a USER CHOICE that you MUST respect - it overrides your own judgment about text length.
+
+Rules:
+1. ANY text field longer than 100 characters MUST be cut at ~100 characters and end with "..."
+2. Cut at a word boundary when possible (don't cut mid-word)
+3. This applies to ALL text fields: descriptions, achievements, comments, notes, attention points, etc.
+4. Do NOT summarize or rephrase - just cut the original text and add "..."
+5. Even if the text fits visually, still truncate it if it exceeds 100 characters - the USER wants short content
+</long_text_strategy>""",
+
+    'omit': """<long_text_strategy>
+USER-SELECTED STRATEGY FOR LONG TEXT: **OMIT**
+This is a USER CHOICE that you MUST respect - it overrides your own judgment about text length.
+
+Rules:
+1. ANY text field longer than 100 characters MUST be replaced with "-" or left as "N/A"
+2. Do NOT show the long text at all - the user explicitly chose to skip long content
+3. Short text (under 100 characters) should still be shown normally
+4. This applies to ALL text fields: descriptions, achievements, comments, notes, attention points, etc.
+5. Even if the text fits visually, still omit it if it exceeds 100 characters - the USER wants to skip long content
+</long_text_strategy>""",
+}
+
+
 def populate_html_with_claude(
     html_template: str,
     project_data: Dict[str, Any],
-    mapping_json: Dict[str, Any]
+    mapping_json: Dict[str, Any],
+    long_text_strategy: str = 'summarize'
 ) -> str:
     """
     Use Claude Opus 4.5 to intelligently populate the HTML template with project data.
@@ -395,11 +467,15 @@ def populate_html_with_claude(
     template_fields = list(set(re.findall(r'\{\{(\w+)\}\}', html_template)))
 
     # Build the prompt
+    strategy_instructions = LONG_TEXT_STRATEGY_INSTRUCTIONS.get(
+        long_text_strategy, LONG_TEXT_STRATEGY_INSTRUCTIONS['summarize']
+    )
     prompt = POPULATION_PROMPT.format(
         html_template=html_template,
         template_fields=json.dumps(template_fields, indent=2),
         project_data=json.dumps(cleaned_project_data, indent=2, ensure_ascii=False),
-        mapping_json=json.dumps(mapping_json, indent=2)
+        mapping_json=json.dumps(mapping_json, indent=2),
+        long_text_strategy_instructions=strategy_instructions
     )
 
     # Use Claude Opus 4.5 with streaming
@@ -457,19 +533,48 @@ Your presentations are visually polished, well-balanced, and effectively communi
 
 <critical_css_rules>
 ABSOLUTE CSS RESTRICTIONS - NEVER VIOLATE:
-1. DO NOT use flexbox (display: flex) - FORBIDDEN
-2. DO NOT use CSS Grid (display: grid) - FORBIDDEN
+1. DO NOT use flexbox (display: flex, inline-flex) - COMPLETELY FORBIDDEN
+2. DO NOT use CSS Grid (display: grid, inline-grid) - COMPLETELY FORBIDDEN
 3. DO NOT add ANY new CSS rules to the <style> block
 4. COPY the template's <style> block EXACTLY - character by character
 5. The template uses position: absolute - KEEP IT THAT WAY
+6. If the original template already has flex/grid in its <style>, keep it but NEVER add new ones
 </critical_css_rules>
+
+<overflow_prevention>
+OVERFLOW AND TEXT OVERLAP PREVENTION - MANDATORY:
+1. Text must NEVER overflow its container or overlap with adjacent elements
+2. For long text, ALWAYS reduce font-size inline BEFORE it can overflow
+3. Use overflow: hidden on containers that might receive long text
+4. Use word-wrap: break-word to prevent single long words from overflowing
+5. For multi-line containers, use overflow: hidden and max-height to clip excess
+6. NEVER let text from one element visually overlap or cover text from another
+7. When in doubt, make text smaller rather than risk overflow
+8. Test mentally: if the text is 2x longer than expected, would it still fit? If not, add safeguards
+</overflow_prevention>
+
+<icon_safety>
+ICONS AND SPECIAL CHARACTERS - CRITICAL:
+1. ONLY use basic ASCII characters and standard HTML entities
+2. DO NOT use emoji unicode characters (they render inconsistently across systems)
+3. DO NOT use icon fonts (FontAwesome, Material Icons, etc.) unless already in the template
+4. For status indicators use simple text or HTML symbols:
+   - Good: "OK", "Yes", "No", "-", "N/A", "&#9679;" (bullet), "&#9650;" (triangle up), "&#9660;" (triangle down)
+   - Good: "&#10003;" (checkmark), "&#10005;" (cross), "&#9733;" (star)
+   - BAD: emoji like 🟢🔴⚠️🎯✅❌ (these may render as broken/null characters in PDF)
+5. For colored indicators, use a <span> with background-color and border-radius instead of emoji:
+   Example: <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#22c55e;"></span>
+6. NEVER use characters from Private Use Area (U+E000–U+F8FF) or rare Unicode blocks
+</icon_safety>
 
 <what_you_CAN_do>
 You ARE ALLOWED to make these adjustments ONLY via inline styles on individual elements:
 1. Reduce font-size on long titles so they fit (e.g., style="font-size: 16px;")
-2. Add text-overflow: ellipsis for overflowing text
-3. Adjust line-height if needed for readability
-4. These are the ONLY inline style changes permitted
+2. Add overflow: hidden and word-wrap: break-word to prevent overflow
+3. Add text-overflow: ellipsis with white-space: nowrap for single-line truncation
+4. Adjust line-height if needed for readability
+5. Add max-height with overflow: hidden for multi-line content
+6. These are the ONLY inline style changes permitted - NO layout changes (no flex, grid, float)
 </what_you_CAN_do>
 
 <original_template>
@@ -626,14 +731,17 @@ Return ONLY the complete HTML document.
 - No markdown code blocks (no ```html)
 - Just raw HTML starting with <!DOCTYPE html>
 The CSS must be IDENTICAL to the template. Only slide content changes.
-</output>"""
+</output>
+
+{long_text_strategy_instructions}"""
 
 
 def generate_multi_project_html(
     html_template: str,
     projects_data: List[Dict[str, Any]],
     mapping_json: Dict[str, Any],
-    use_claude: bool = True
+    use_claude: bool = True,
+    long_text_strategy: str = 'summarize'
 ) -> str:
     """
     Generate HTML with slides for multiple projects using Claude Opus 4.5.
@@ -658,10 +766,14 @@ def generate_multi_project_html(
     cleaned_projects_data = [clean_project_data(proj) for proj in projects_data]
 
     # Use Claude Opus 4.5 for intelligent multi-project generation
+    strategy_instructions = LONG_TEXT_STRATEGY_INSTRUCTIONS.get(
+        long_text_strategy, LONG_TEXT_STRATEGY_INSTRUCTIONS['summarize']
+    )
     prompt = MULTI_PROJECT_PROMPT.format(
         html_template=html_template,
         projects_data=json.dumps(cleaned_projects_data, indent=2, ensure_ascii=False),
-        mapping_json=json.dumps(mapping_json, indent=2)
+        mapping_json=json.dumps(mapping_json, indent=2),
+        long_text_strategy_instructions=strategy_instructions
     )
 
     html_content = ""

@@ -208,8 +208,8 @@ export function useGenerate(sessionId: string, engine: Engine | null): UseGenera
    * Generate using Claude PPTX (Python backend)
    */
   const generatePptx = useCallback(async (): Promise<GenerationResult | null> => {
-    setFetching(true)
-    setCurrentStep('fetching')
+    setGenerating(true)
+    setCurrentStep('generating')
     setError(null)
 
     try {
@@ -220,10 +220,6 @@ export function useGenerate(sessionId: string, engine: Engine | null): UseGenera
       }
 
       console.log(`Claude PPTX generation job created: ${response.jobId}`)
-
-      setFetching(false)
-      setGenerating(true)
-      setCurrentStep('generating')
 
       const startTime = Date.now()
       const generationResult = await pollPptxJobStatus(response.jobId, startTime)
