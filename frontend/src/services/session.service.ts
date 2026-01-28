@@ -198,8 +198,8 @@ export async function checkJobStatus(
  * Triggers job processing in background (fire-and-forget).
  * The function returns immediately - use checkJobStatus to poll for completion.
  */
-export function triggerJobProcessing(jobId: string, engine: 'claude-pptx' | 'gamma' = 'gamma'): void {
-  const endpoint = engine === 'gamma' ? 'process-gamma-job' : 'process-pptx-job'
+export function triggerJobProcessing(jobId: string, engine: 'gamma' = 'gamma'): void {
+  const endpoint = 'process-gamma-job'
 
   // Fire and forget - don't await, don't handle errors
   // The job will update its own status in the database

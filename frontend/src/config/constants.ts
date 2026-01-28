@@ -30,12 +30,7 @@ export const ENGINE_OPTIONS = {
   'claude-pptx': {
     id: 'claude-pptx',
     name: 'Claude PPTX',
-    description: 'Programmatic control with exact template matching',
-  },
-  'claude-html': {
-    id: 'claude-html',
-    name: 'Claude HTML',
-    description: 'PPTX → HTML conversion with Claude Vision (new)',
+    description: 'PPTX → HTML/PDF conversion with Claude Vision',
   },
 } as const
 

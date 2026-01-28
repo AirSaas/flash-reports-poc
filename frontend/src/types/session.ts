@@ -1,4 +1,4 @@
-export type Engine = 'gamma' | 'claude-pptx' | 'claude-html'
+export type Engine = 'gamma' | 'claude-pptx'
 
 export type Step =
   | 'select_engine'

@@ -1,6 +1,40 @@
+import { useState, useEffect, useRef } from 'react'
 import { cn } from '@lib/utils'
 
 export type GenerationStep = 'idle' | 'fetching' | 'generating' | 'evaluating' | 'done' | 'error'
+
+const COUNTDOWN_SECONDS = 8 * 60 // 8 minutes
+
+function useCountdown(active: boolean) {
+  const [remaining, setRemaining] = useState(COUNTDOWN_SECONDS)
+  const startTimeRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    if (!active) {
+      setRemaining(COUNTDOWN_SECONDS)
+      startTimeRef.current = null
+      return
+    }
+
+    if (!startTimeRef.current) {
+      startTimeRef.current = Date.now()
+    }
+
+    const interval = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - startTimeRef.current!) / 1000)
+      const left = Math.max(0, COUNTDOWN_SECONDS - elapsed)
+      setRemaining(left)
+    }, 1000)
+
+    return () => clearInterval(interval)
+  }, [active])
+
+  const minutes = Math.floor(remaining / 60)
+  const seconds = remaining % 60
+  const progress = 1 - remaining / COUNTDOWN_SECONDS
+
+  return { minutes, seconds, progress, remaining }
+}
 
 interface GenerationProgressProps {
   generating: boolean
@@ -42,6 +76,10 @@ export function GenerationProgress({
   onDownloadPrompt,
   isHtmlEngine = false,
 }: GenerationProgressProps) {
+  const { minutes, seconds, progress } = useCountdown(
+    (currentStep ?? (fetching ? 'fetching' : generating ? 'generating' : 'idle')) === 'generating'
+  )
+
   const downloadButtonText = isHtmlEngine
     ? (pdfUrl ? 'Download PDF' : 'Open Report')
     : 'Download PPTX'
@@ -100,13 +138,26 @@ export function GenerationProgress({
 
       {/* Processing message for fetching/generating */}
       {isProcessing && (
-        <div className="bg-gray-100 rounded-lg p-4">
+        <div className="bg-gray-100 rounded-lg p-4 space-y-3">
           <div className="flex items-center gap-2">
             <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
             <span className="text-sm text-gray-600">
               {STEP_MESSAGES[activeStep]}
             </span>
           </div>
+          {activeStep === 'generating' && (
+            <div className="space-y-2">
+              <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                <div
+                  className="bg-blue-600 h-2 rounded-full transition-all duration-1000 ease-linear"
+                  style={{ width: `${Math.min(progress * 100, 100)}%` }}
+                />
+              </div>
+              <p className="text-xs text-gray-500 text-center">
+                Estimated time remaining: {minutes}:{seconds.toString().padStart(2, '0')}
+              </p>
+            </div>
+          )}
         </div>
       )}
 

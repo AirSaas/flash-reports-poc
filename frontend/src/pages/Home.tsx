@@ -5,7 +5,6 @@ import { useMapping } from '@hooks/useMapping'
 import { useUpload } from '@hooks/useUpload'
 import { useGenerate } from '@hooks/useGenerate'
 import { updateLongTextStrategy, copyMapping, copyFetchedData, getFetchedDataInfo, fetchProjects } from '@services/session.service'
-import { downloadReport } from '@services/generate.service'
 import { Header, Sidebar } from '@ui/layout'
 import { EngineSelector } from '@ui/engine'
 import { ProjectsConfig } from '@ui/projects'
@@ -328,17 +327,16 @@ export function Home() {
   const handleDownloadReport = useCallback(() => {
     if (!result?.pptxUrl) return
 
-    // For HTML engine, download the PDF or open HTML for print
-    if (engine === 'claude-html') {
+    // For HTML engine, open PDF/HTML in a new tab (don't replace current page)
+    if (engine === 'claude-pptx') {
       if (result.pdfUrl) {
-        // PDF available from backend
-        downloadReport(result.pdfUrl, 'flash_report.pdf')
+        window.open(result.pdfUrl, '_blank')
       } else if (result.htmlUrl) {
-        // No PDF - open HTML in new tab for user to print as PDF
         window.open(result.htmlUrl, '_blank')
       }
     } else {
-      downloadReport(result.pptxUrl, 'portfolio_report.pptx')
+      // Gamma PPTX - open in new tab
+      window.open(result.pptxUrl, '_blank')
     }
   }, [result, engine])
 
@@ -646,7 +644,7 @@ export function Home() {
             prompt={result?.prompt}
             onDownload={handleDownloadReport}
             onDownloadPrompt={handleDownloadPrompt}
-            isHtmlEngine={engine === 'claude-html'}
+            isHtmlEngine={engine === 'claude-pptx'}
           />
         )
 
@@ -667,8 +665,8 @@ export function Home() {
                   onClick={handleDownloadReport}
                   className="w-full bg-green-600 text-white rounded-lg py-3 px-4 font-medium hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
                 >
-                  <span className="text-xl">{engine === 'claude-html' && !result.pdfUrl ? '🔗' : '📥'}</span>
-                  {engine === 'claude-html'
+                  <span className="text-xl">{engine === 'claude-pptx' && !result.pdfUrl ? '🔗' : '📥'}</span>
+                  {engine === 'claude-pptx'
                     ? (result.pdfUrl ? 'Download PDF' : 'Open Report (Print to PDF)')
                     : 'Download PPTX'}
                 </button>
