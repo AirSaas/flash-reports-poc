@@ -12,7 +12,7 @@ import { ProjectsConfig } from '@ui/projects'
 import { TemplateUpload, TemplatePreview, UseLastTemplate } from '@ui/template'
 import { UseLastMapping, UseLastFetchedData, MappingQuestion, BatchMappingEditor } from '@ui/mapping'
 import { LongTextOptions } from '@ui/options'
-import { GenerationProgress, EvaluationResult, DownloadButton } from '@ui/generation'
+import { GenerationProgress, EvaluationResult } from '@ui/generation'
 
 export function Home() {
   const {
@@ -326,10 +326,21 @@ export function Home() {
   }, [goToStep, generate])
 
   const handleDownloadReport = useCallback(() => {
-    if (result?.pptxUrl) {
+    if (!result?.pptxUrl) return
+
+    // For HTML engine, download the PDF or open HTML for print
+    if (engine === 'claude-html') {
+      if (result.pdfUrl) {
+        // PDF available from backend
+        downloadReport(result.pdfUrl, 'flash_report.pdf')
+      } else if (result.htmlUrl) {
+        // No PDF - open HTML in new tab for user to print as PDF
+        window.open(result.htmlUrl, '_blank')
+      }
+    } else {
       downloadReport(result.pptxUrl, 'portfolio_report.pptx')
     }
-  }, [result])
+  }, [result, engine])
 
   const handleDownloadPrompt = useCallback(() => {
     if (result?.prompt) {
@@ -631,9 +642,11 @@ export function Home() {
             error={generateError}
             onRetry={generateError ? handleRegenerate : undefined}
             pptxUrl={result?.pptxUrl}
+            pdfUrl={result?.pdfUrl}
             prompt={result?.prompt}
             onDownload={handleDownloadReport}
             onDownloadPrompt={handleDownloadPrompt}
+            isHtmlEngine={engine === 'claude-html'}
           />
         )
 
@@ -650,7 +663,15 @@ export function Home() {
             {result && (
               <div className="space-y-4">
                 <h2 className="text-lg font-semibold text-gray-900">Your Report is Ready!</h2>
-                <DownloadButton pptxUrl={result.pptxUrl} fileName="portfolio_report.pptx" />
+                <button
+                  onClick={handleDownloadReport}
+                  className="w-full bg-green-600 text-white rounded-lg py-3 px-4 font-medium hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
+                >
+                  <span className="text-xl">{engine === 'claude-html' && !result.pdfUrl ? '🔗' : '📥'}</span>
+                  {engine === 'claude-html'
+                    ? (result.pdfUrl ? 'Download PDF' : 'Open Report (Print to PDF)')
+                    : 'Download PPTX'}
+                </button>
 
                 {/* Download Prompt button */}
                 {result.prompt && (

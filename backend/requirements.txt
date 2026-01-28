@@ -6,3 +6,12 @@ anthropic>=0.40.0
 supabase>=2.0.0
 python-multipart>=0.0.6
 httpx>=0.25.0
+
+# PPTX to PDF/PNG conversion
+pdf2image>=1.17.0
+
+# PDF generation from HTML (optional - requires system libraries)
+# Install system dependencies first:
+#   macOS: brew install glib pango cairo
+#   Ubuntu: apt-get install libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf2.0-0
+weasyprint>=60.0

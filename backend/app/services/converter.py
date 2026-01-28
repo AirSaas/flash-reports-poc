@@ -10,7 +10,7 @@ import shutil
 from pathlib import Path
 from PIL import Image
 import io
-from typing import List, Tuple
+from typing import List, Tuple, Union
 
 from app.config import SOFFICE_PATH
 
@@ -43,7 +43,7 @@ def convert_pptx_to_images(
     pptx_bytes: bytes,
     filename: str = "template.pptx",
     return_pdf: bool = False
-) -> List[Tuple[bytes, str]] | Tuple[List[Tuple[bytes, str]], bytes]:
+) -> Union[List[Tuple[bytes, str]], Tuple[List[Tuple[bytes, str]], bytes]]:
     """
     Convert a PPTX file to high resolution PNG images.
 

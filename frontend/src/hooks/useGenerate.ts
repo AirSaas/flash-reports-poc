@@ -22,6 +22,7 @@ interface GenerationResult {
   prompt?: string
   // For HTML generation
   htmlUrl?: string
+  pdfUrl?: string
 }
 
 interface UseGenerateReturn {
@@ -136,8 +137,9 @@ export function useGenerate(sessionId: string, engine: Engine | null): UseGenera
             throw new Error('Job completed but no result found')
           }
           return {
-            pptxUrl: job.result.htmlUrl || '', // HTML URL as download
+            pptxUrl: job.result.pdfUrl || job.result.htmlUrl || '', // Prefer PDF, fallback to HTML
             htmlUrl: job.result.htmlUrl,
+            pdfUrl: job.result.pdfUrl,
             reportId: job.result.reportId!,
             iteration: 1,
           }

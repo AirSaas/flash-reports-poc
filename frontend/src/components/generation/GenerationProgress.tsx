@@ -11,9 +11,11 @@ interface GenerationProgressProps {
   error: string | null
   onRetry?: () => void
   pptxUrl?: string | null
+  pdfUrl?: string | null
   prompt?: string | null
   onDownload?: () => void
   onDownloadPrompt?: () => void
+  isHtmlEngine?: boolean
 }
 
 const STEP_MESSAGES: Record<GenerationStep, string> = {
@@ -34,10 +36,16 @@ export function GenerationProgress({
   error,
   onRetry,
   pptxUrl,
+  pdfUrl,
   prompt,
   onDownload,
   onDownloadPrompt,
+  isHtmlEngine = false,
 }: GenerationProgressProps) {
+  const downloadButtonText = isHtmlEngine
+    ? (pdfUrl ? 'Download PDF' : 'Open Report')
+    : 'Download PPTX'
+
   // Determine step from props if not explicitly provided
   const activeStep: GenerationStep = currentStep ?? (
     fetching ? 'fetching' :
@@ -48,7 +56,7 @@ export function GenerationProgress({
 
   const steps = [
     { id: 'fetching', label: 'Fetching Project Data', active: activeStep === 'fetching', done: ['generating', 'evaluating', 'done'].includes(activeStep) },
-    { id: 'generating', label: 'Generating PPTX', active: activeStep === 'generating', done: ['evaluating', 'done'].includes(activeStep) },
+    { id: 'generating', label: isHtmlEngine ? 'Generating Report' : 'Generating PPTX', active: activeStep === 'generating', done: ['evaluating', 'done'].includes(activeStep) },
     { id: 'evaluating', label: 'Evaluating Quality', active: activeStep === 'evaluating', done: activeStep === 'done' },
   ]
 
@@ -108,7 +116,7 @@ export function GenerationProgress({
           <div className="flex items-center gap-3">
             <span className="text-2xl">✅</span>
             <div className="flex-1">
-              <p className="text-green-800 font-semibold">PPTX Ready!</p>
+              <p className="text-green-800 font-semibold">{isHtmlEngine ? 'PDF Ready!' : 'PPTX Ready!'}</p>
               <p className="text-green-600 text-sm">Download while quality check runs in background.</p>
             </div>
           </div>
@@ -118,7 +126,7 @@ export function GenerationProgress({
               className="flex-1 bg-green-600 text-white rounded-lg py-2.5 px-4 font-medium hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
             >
               <span>📥</span>
-              Download PPTX
+              {downloadButtonText}
             </button>
             {prompt && onDownloadPrompt && (
               <button
@@ -163,7 +171,7 @@ export function GenerationProgress({
             <span className="text-3xl">✅</span>
             <div>
               <p className="text-green-800 font-semibold text-lg">Report Generated Successfully!</p>
-              <p className="text-green-600 text-sm">Your presentation is ready for download.</p>
+              <p className="text-green-600 text-sm">Your {isHtmlEngine ? 'PDF report' : 'presentation'} is ready for download.</p>
             </div>
           </div>
           <div className="flex gap-3">
@@ -172,7 +180,7 @@ export function GenerationProgress({
               className="flex-1 bg-green-600 text-white rounded-lg py-3 px-4 font-medium hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
             >
               <span className="text-xl">📥</span>
-              Download PPTX
+              {downloadButtonText}
             </button>
             {prompt && onDownloadPrompt && (
               <button

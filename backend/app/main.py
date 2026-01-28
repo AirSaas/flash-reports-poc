@@ -28,6 +28,14 @@ from app.services.data_populator import (
     simple_populate_html,
     apply_mapping_to_project
 )
+# PDF generation - optional, requires system dependencies (GLib, Pango, Cairo)
+PDF_GENERATION_AVAILABLE = False
+html_to_pdf = None
+try:
+    from app.services.pdf_generator import html_to_pdf
+    PDF_GENERATION_AVAILABLE = True
+except (ImportError, OSError) as e:
+    print(f"Warning: PDF generation not available (missing system libraries): {e}")
 from app.services.supabase_client import (
     get_session,
     get_mapping,
@@ -369,12 +377,27 @@ async def process_html_generation(
 
         print(f"         HTML population complete")
 
-        # Save to storage
+        # Save HTML to storage
         timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
         filename = f"report_{timestamp}.html"
 
         html_url = await upload_generated_html(session_id, final_html, filename)
-        print(f"         Uploaded to: {html_url}")
+        print(f"         Uploaded HTML to: {html_url}")
+
+        # Generate PDF from HTML (optional - depends on system libraries)
+        report_pdf_url = None
+        if PDF_GENERATION_AVAILABLE and html_to_pdf:
+            print(f"         Converting HTML to PDF...")
+            try:
+                report_pdf_bytes = html_to_pdf(final_html)
+                report_pdf_filename = f"report_{timestamp}.pdf"
+                report_pdf_url = await upload_pdf(session_id, report_pdf_bytes, report_pdf_filename)
+                print(f"         Uploaded PDF to: {report_pdf_url}")
+            except Exception as pdf_error:
+                print(f"         Warning: PDF generation failed: {pdf_error}")
+                report_pdf_url = None
+        else:
+            print(f"         PDF generation skipped (dependencies not available)")
 
         # Save report reference
         report_id = await save_generated_report(session_id, html_url, "claude-html")
@@ -388,8 +411,9 @@ async def process_html_generation(
             result={
                 "reportId": report_id,
                 "htmlUrl": html_url,
+                "pdfUrl": report_pdf_url,  # Now this is the report PDF, not template PDF
                 "templateHtmlUrl": template_html_url,
-                "pdfUrl": pdf_url if pdf_bytes else None,
+                "templatePdfUrl": pdf_url if pdf_bytes else None,
                 "projectCount": len(projects),
                 "slideCount": len(images)
             }

@@ -18,6 +18,9 @@ interface JobStatus {
   result?: {
     reportId?: string
     htmlUrl?: string
+    pdfUrl?: string
+    templateHtmlUrl?: string
+    templatePdfUrl?: string
     projectCount?: number
     slideCount?: number
   }
