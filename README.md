@@ -1,46 +1,68 @@
-# Flash Report POC - AirSaas
+# Flash Reports - AirSaas
 
-Automated PowerPoint portfolio report generator from AirSaas project data.
+Automated report generator from AirSaas project portfolio data.
 
 ## Overview
 
-This POC automates the generation of PowerPoint presentations from AirSaas project data using a conversational interface for field mapping and two different generation engines.
+Flash Reports generates professional reports from AirSaas project data using a conversational interface for field mapping and multiple generation engines.
 
 ## Features
 
 - **Conversational Mapping**: Interactive chat with Claude to map template fields to AirSaas data
-- **Dual Generation Engines**:
-  - Claude PPTX Skill for programmatic control
-  - Gamma API for AI-powered design
+- **Multiple Generation Engines**:
+  - **Claude PPTX**: PowerPoint generation via Claude's PPTX Skill (Supabase Edge Functions)
+  - **Claude HTML**: HTML/PDF generation via Claude Vision (Python FastAPI backend)
 - **Quality Evaluation**: Automatic evaluation with regeneration if needed
 - **Session Persistence**: Resume work across browser sessions
+- **PDF Export**: Server-side PDF generation with WeasyPrint (or browser print fallback)
 
 ## Tech Stack
 
-- **Frontend**: React 18 + TypeScript + Vite + Tailwind CSS
-- **Backend**: Supabase Edge Functions (Deno)
+- **Frontend**: React 18 + TypeScript + Vite + Tailwind CSS + html2pdf.js
+- **Backend (Supabase)**: Edge Functions (Deno) for PPTX generation
+- **Backend (Python)**: FastAPI for HTML/PDF generation
 - **Database**: Supabase Postgres
 - **Storage**: Supabase Storage
-- **AI**: Anthropic Claude API
+- **AI**: Anthropic Claude API (PPTX Skill + Vision)
 
 ## Setup
 
 ### Prerequisites
 
 - Node.js 18+
+- Python 3.8+ (for Claude HTML engine)
 - Supabase account
 - Anthropic API key
-- Gamma API key (optional)
 - AirSaas API key
 
-### 1. Clone and Install
+### 1. Clone and Install Frontend
 
 ```bash
 cd frontend
 npm install
 ```
 
-### 2. Configure Supabase
+### 2. Setup Python Backend (for Claude HTML engine)
+
+```bash
+cd backend
+
+# Create virtual environment
+python -m venv .venv
+source .venv/bin/activate  # macOS/Linux
+
+# Install Python dependencies
+pip install -r requirements.txt
+
+# Install system dependencies for PDF generation
+# macOS:
+brew install poppler glib pango cairo
+
+# Ubuntu/Debian:
+# apt-get install poppler-utils libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf2.0-0
+```
+
+### 3. Configure Supabase
 
 1. Create a new Supabase project at [supabase.com](https://supabase.com)
 
@@ -70,51 +92,62 @@ npm install
    supabase functions deploy upload-template
    supabase functions deploy get-session
    supabase functions deploy generate-claude-pptx
-   supabase functions deploy generate-gamma
+   supabase functions deploy fetch-projects
    supabase functions deploy evaluate
    ```
 
 5. Set secrets:
    ```bash
    supabase secrets set ANTHROPIC_API_KEY=sk-ant-xxx
-   supabase secrets set GAMMA_API_KEY=sk-gamma-xxx
    supabase secrets set AIRSAAS_API_KEY=your-airsaas-key
    supabase secrets set AIRSAAS_BASE_URL=https://api.airsaas.io/v1
    ```
 
-### 3. Configure Frontend
+### 4. Configure Environment Variables
 
-```bash
-cd frontend
-cp .env.example .env.local
-```
-
-Edit `.env.local`:
+**Frontend** (`frontend/.env.local`):
 ```
 VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key
+VITE_PYTHON_BACKEND_URL=http://localhost:8000
 ```
 
-### 4. Run Development Server
+**Python Backend** (`backend/.env`):
+```
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_KEY=your-service-role-key
+ANTHROPIC_API_KEY=sk-ant-xxx
+```
 
+### 5. Run Development Servers
+
+**Frontend**:
 ```bash
 cd frontend
 npm run dev
 ```
 
+**Python Backend** (in another terminal):
+```bash
+cd backend
+source .venv/bin/activate
+uvicorn app.main:app --reload --port 8000
+```
+
 ## Usage Flow
 
-1. **Select Engine**: Choose between Claude PPTX or Gamma
-2. **Upload Template**: Upload your reference .pptx template
-3. **Field Mapping**: Chat with Claude to map template fields to AirSaas data
-4. **Text Options**: Choose how to handle long text content
-5. **Generate**: Create the PowerPoint presentation
-6. **Download**: Get your generated report
+1. **Select Engine**: Choose between Claude PPTX or Claude HTML
+2. **Configure Projects**: Select workspace and projects to include
+3. **Upload Template**: Upload your reference .pptx template
+4. **Field Mapping**: Chat with Claude to map template fields to AirSaas data
+5. **Text Options**: Choose how to handle long text content
+6. **Generate**: Create the report
+7. **Download**: Get your PPTX or PDF report
 
 ## Project Structure
 
 ```
-flash-report-poc/
+flash-reports/
 ├── frontend/           # React application
 │   ├── src/
 │   │   ├── components/ # Reusable UI components
@@ -123,6 +156,11 @@ flash-report-poc/
 │   │   ├── lib/        # Utilities and helpers
 │   │   └── types/      # TypeScript definitions
 │   └── ...
+├── backend/            # Python FastAPI backend
+│   ├── app/
+│   │   ├── main.py     # FastAPI application
+│   │   └── services/   # Business logic
+│   └── requirements.txt
 └── supabase/
     ├── functions/      # Edge Functions
     │   ├── chat/       # Mapping conversation
@@ -133,7 +171,7 @@ flash-report-poc/
 
 ## API Reference
 
-### Edge Functions
+### Supabase Edge Functions
 
 | Endpoint | Description |
 |----------|-------------|
@@ -141,19 +179,28 @@ flash-report-poc/
 | `/upload-template` | Register uploaded template |
 | `/get-session` | Get/update session state |
 | `/generate-claude-pptx` | Generate via Claude PPTX Skill |
-| `/generate-gamma` | Generate via Gamma API |
+| `/fetch-projects` | Fetch data from AirSaas API |
 | `/evaluate` | Evaluate generated report quality |
 
+### Python Backend Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/generate-html` | POST | Create HTML generation job |
+| `/job-status` | POST | Check job status |
+| `/analyze-template` | POST | Analyze PPTX template |
+| `/health` | GET | Health check |
+
 ## Configuration
-
-### AirSaas Projects
-
-Projects are hardcoded in `supabase/functions/_shared/anthropic.ts`. Update the `AIRSAAS_PROJECTS` constant to change the project list.
 
 ### Evaluation Settings
 
 - **Threshold**: 65 points (regenerate if below)
 - **Max Iterations**: 2 attempts before accepting
+
+## Documentation
+
+See [CLAUDE.md](./CLAUDE.md) for detailed technical documentation.
 
 ## License
 

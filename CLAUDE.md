@@ -2,17 +2,22 @@
 
 ## Overview
 
-Flash Reports is a tool that generates PowerPoint presentations from AirSaas project portfolio data using Claude's PPTX Skill. Users can configure which projects to include, upload a template, map fields, and generate professional reports.
+Flash Reports is a tool that generates reports from AirSaas project portfolio data. It supports two generation modes:
+- **Claude PPTX**: PowerPoint presentations using Claude's PPTX Skill (via Supabase Edge Functions)
+- **Claude HTML**: HTML/PDF reports using Claude Vision (via Python FastAPI backend)
+
+Users can configure which projects to include, upload a template, map fields, and generate professional reports.
 
 ## Architecture
 
 ### Tech Stack
 
-- **Frontend**: React + TypeScript + Vite + Tailwind CSS
-- **Backend**: Supabase Edge Functions (Deno)
+- **Frontend**: React + TypeScript + Vite + Tailwind CSS + html2pdf.js
+- **Backend (Supabase)**: Supabase Edge Functions (Deno) for PPTX generation
+- **Backend (Python)**: FastAPI for HTML/PDF generation with Claude Vision
 - **Database**: Supabase PostgreSQL
 - **Storage**: Supabase Storage (for templates and generated files)
-- **AI**: Anthropic Claude API with PPTX Skill
+- **AI**: Anthropic Claude API (PPTX Skill + Vision)
 - **Plan**: Supabase Pro (150s Edge Function timeout)
 
 ### Project Structure
@@ -38,8 +43,21 @@ flash-reports/
 │   │   └── types/              # TypeScript type definitions
 │   └── .env.local              # Environment variables
 │
+├── backend/                     # Python FastAPI backend (claude-html engine)
+│   ├── app/
+│   │   ├── main.py             # FastAPI application
+│   │   ├── config.py           # Environment configuration
+│   │   └── services/
+│   │       ├── converter.py     # PPTX → PDF → PNG conversion
+│   │       ├── claude_html.py   # HTML template generation with Claude Vision
+│   │       ├── data_populator.py # HTML population with project data
+│   │       ├── pdf_generator.py # HTML → PDF conversion (WeasyPrint)
+│   │       └── supabase_client.py # Supabase operations
+│   ├── requirements.txt        # Python dependencies
+│   └── .env                    # Environment variables
+│
 ├── supabase/
-│   ├── functions/              # Edge Functions
+│   ├── functions/              # Edge Functions (claude-pptx engine)
 │   │   ├── _shared/            # Shared utilities
 │   │   │   ├── anthropic.ts    # Claude API helpers, compression
 │   │   │   ├── cors.ts         # CORS handling
@@ -172,8 +190,21 @@ This simplifies the architecture and prevents data synchronization issues.
 └────────┬─────────┘
          ▼
 ┌──────────────────┐
-│ Done             │  Download PPTX
+│ Done             │  Download PPTX/PDF
 └──────────────────┘
+```
+
+## Generation Engines
+
+### Claude PPTX Engine (Supabase Edge Functions)
+Uses Claude's PPTX Skill to generate PowerPoint files directly. Slower but produces editable PPTX files.
+
+### Claude HTML Engine (Python FastAPI Backend)
+Uses Claude Vision to convert PPTX templates to HTML, then populates with project data. Faster and produces HTML/PDF output.
+
+**Pipeline**:
+```
+PPTX Template → PDF → PNG slides → Claude Vision → HTML Template → Data Population → HTML/PDF
 ```
 
 ## PPTX Generation Architecture (Job-Based Polling)
@@ -287,6 +318,100 @@ Copies project data between sessions (used when reusing previous fetch).
 **Input**: `sourceSessionId`
 **Action**: Copies `fetched_projects_data` from source to current session
 
+## Python Backend (Claude HTML Engine)
+
+The Python backend handles HTML/PDF report generation using Claude Vision.
+
+### Architecture
+
+```
+Frontend                              Python Backend
+   │
+   ├──► POST /generate-html ─────────► Creates job in Supabase DB
+   │         │                         Returns jobId immediately
+   │         ▼
+   │    Background Task ─────────────► Processes generation:
+   │                                   [STEP 1/6] Load session data
+   │                                   [STEP 2/6] Validate projects
+   │                                   [STEP 3/6] Download template (PPTX)
+   │                                   [STEP 4/6] Convert PPTX → PDF → PNG
+   │                                   [STEP 5/6] Claude Vision → HTML template
+   │                                   [STEP 6/6] Populate HTML + generate PDF
+   │
+   └──► POST /job-status ◄───────────► Poll every 3s until completed/failed
+        (polling loop, max 5 min)
+```
+
+### Key Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/generate-html` | POST | Create HTML generation job |
+| `/job-status` | POST | Check job status |
+| `/analyze-template` | POST | Analyze PPTX and generate HTML template |
+| `/generate-direct` | POST | Synchronous generation (testing only) |
+| `/health` | GET | Health check |
+
+### PDF Generation
+
+The backend can optionally generate PDF from HTML using WeasyPrint:
+
+```python
+# Optional - requires system libraries (GLib, Pango, Cairo)
+PDF_GENERATION_AVAILABLE = False
+try:
+    from app.services.pdf_generator import html_to_pdf
+    PDF_GENERATION_AVAILABLE = True
+except (ImportError, OSError):
+    pass  # PDF generation disabled
+```
+
+**Job Result**:
+```json
+{
+  "reportId": "uuid",
+  "htmlUrl": "https://storage.../report.html",
+  "pdfUrl": "https://storage.../report.pdf",  // null if WeasyPrint unavailable
+  "templateHtmlUrl": "https://storage.../template.html",
+  "templatePdfUrl": "https://storage.../template.pdf",
+  "projectCount": 5,
+  "slideCount": 10
+}
+```
+
+### Running the Backend
+
+```bash
+cd backend
+
+# Create virtual environment
+python -m venv .venv
+source .venv/bin/activate  # macOS/Linux
+# .venv\Scripts\activate   # Windows
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Install system dependencies for PDF generation (optional)
+# macOS:
+brew install poppler glib pango cairo
+
+# Ubuntu:
+# apt-get install poppler-utils libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf2.0-0
+
+# Run server
+uvicorn app.main:app --reload --port 8000
+```
+
+### Environment Variables
+
+Create `backend/.env`:
+```
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_KEY=your-service-role-key
+ANTHROPIC_API_KEY=sk-ant-xxx
+```
+
 ## Frontend State Management
 
 ### localStorage Persistence
@@ -356,12 +481,29 @@ npm run dev    # Development
 npm run build  # Production build
 ```
 
+### Python Backend
+```bash
+cd backend
+source .venv/bin/activate
+uvicorn app.main:app --reload --port 8000
+```
+
+For production, use a process manager like `gunicorn` or deploy to a cloud platform.
+
 ## Environment Variables
 
 ### Frontend (`.env.local`)
 ```
 VITE_SUPABASE_URL=https://wlvpwlygitzhrkrvrfwj.supabase.co
 VITE_SUPABASE_ANON_KEY=<anon-key>
+VITE_PYTHON_BACKEND_URL=http://localhost:8000  # For claude-html engine
+```
+
+### Python Backend (`.env`)
+```
+SUPABASE_URL=https://wlvpwlygitzhrkrvrfwj.supabase.co
+SUPABASE_KEY=<service-role-key>
+ANTHROPIC_API_KEY=sk-ant-xxx
 ```
 
 ### Supabase Functions
@@ -420,6 +562,30 @@ curl -X POST 'https://wlvpwlygitzhrkrvrfwj.supabase.co/functions/v1/check-job-st
 ### "No PPTX file generated - could not find file_id"
 **Cause**: Claude didn't generate a file (may have errored or returned text only).
 **Solution**: Check Claude response in logs. May need to adjust prompt or reduce data.
+
+### PDF generation not available (Python backend)
+**Cause**: WeasyPrint requires system libraries (GLib, Pango, Cairo) that aren't installed.
+**Solution**:
+```bash
+# macOS
+brew install glib pango cairo
+
+# Ubuntu/Debian
+apt-get install libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf2.0-0
+```
+
+**Fallback**: If PDF generation is unavailable, the frontend will open the HTML in a new tab where users can use "Print → Save as PDF" from the browser.
+
+### PPTX to PNG conversion fails
+**Cause**: `pdf2image` requires Poppler to be installed.
+**Solution**:
+```bash
+# macOS
+brew install poppler
+
+# Ubuntu/Debian
+apt-get install poppler-utils
+```
 
 ## Database Migrations
 
