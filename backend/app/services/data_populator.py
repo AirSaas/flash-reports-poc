@@ -404,6 +404,14 @@ def populate_html_with_claude(
 
     # Use Claude Opus 4.5 with streaming
     html_content = ""
+    token_count = 0
+
+    print(f"         [populate] Prompt size: {len(prompt)} chars")
+    print(f"         [populate] Model: {CLAUDE_MODEL}, Max tokens: {CLAUDE_MAX_TOKENS}")
+    print(f"         [populate] Starting Claude API call...", flush=True)
+
+    import time as _time
+    api_start = _time.time()
 
     with client.messages.stream(
         model=CLAUDE_MODEL,  # claude-opus-4-5-20251101
@@ -418,9 +426,13 @@ def populate_html_with_claude(
     ) as stream:
         for text in stream.text_stream:
             html_content += text
-            print(".", end="", flush=True)
+            token_count += 1
+            if token_count % 500 == 0:
+                elapsed = _time.time() - api_start
+                print(f"\n         [stream] {token_count} chunks, {elapsed:.1f}s elapsed, HTML: {len(html_content)} chars", flush=True)
 
-    print()  # Newline after progress dots
+    api_elapsed = _time.time() - api_start
+    print(f"\n         [populate] Completed in {api_elapsed:.1f}s, chunks: {token_count}, HTML: {len(html_content)} chars", flush=True)
 
     # Clean up - extract just the HTML if wrapped in code blocks
     if "```html" in html_content:
@@ -653,8 +665,17 @@ def generate_multi_project_html(
     )
 
     html_content = ""
+    token_count = 0
 
     print(f"         Generating slides for {len(projects_data)} projects...")
+    print(f"         Template HTML size: {len(html_template)} chars")
+    print(f"         Projects data size: {len(json.dumps(cleaned_projects_data))} chars")
+    print(f"         Total prompt size: {len(prompt)} chars")
+    print(f"         Model: {CLAUDE_MODEL}, Max tokens: {CLAUDE_MAX_TOKENS}")
+    print(f"         Starting Claude API call...", flush=True)
+
+    import time as _time
+    api_start = _time.time()
 
     with client.messages.stream(
         model=CLAUDE_MODEL,  # claude-opus-4-5-20251101
@@ -669,9 +690,13 @@ def generate_multi_project_html(
     ) as stream:
         for text in stream.text_stream:
             html_content += text
-            print(".", end="", flush=True)
+            token_count += 1
+            if token_count % 500 == 0:
+                elapsed = _time.time() - api_start
+                print(f"\n         [stream] {token_count} chunks received, {elapsed:.1f}s elapsed, HTML size: {len(html_content)} chars", flush=True)
 
-    print()  # Newline after progress dots
+    api_elapsed = _time.time() - api_start
+    print(f"\n         Claude API completed in {api_elapsed:.1f}s, total chunks: {token_count}, HTML size: {len(html_content)} chars", flush=True)
 
     # Clean up response
     if "```html" in html_content:
