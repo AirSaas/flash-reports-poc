@@ -1,6 +1,9 @@
 export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string
 export const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 
+// Python backend URL
+export const PYTHON_BACKEND_URL = import.meta.env.VITE_PYTHON_BACKEND_URL as string || 'http://localhost:8000'
+
 export const STORAGE_KEYS = {
   SESSION: 'flash-report-session',
 } as const
@@ -28,6 +31,11 @@ export const ENGINE_OPTIONS = {
     id: 'claude-pptx',
     name: 'Claude PPTX',
     description: 'Programmatic control with exact template matching',
+  },
+  'claude-html': {
+    id: 'claude-html',
+    name: 'Claude HTML',
+    description: 'PPTX → HTML conversion with Claude Vision (new)',
   },
 } as const
 
