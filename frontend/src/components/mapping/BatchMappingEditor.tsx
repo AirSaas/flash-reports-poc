@@ -23,6 +23,7 @@ interface BatchMappingEditorProps {
   fields: FieldWithSuggestion[]
   allOptions: MappingOption[]
   onSubmit: (mappings: Record<string, string>) => void
+  onReset?: () => void
   loading?: boolean
 }
 
@@ -30,6 +31,7 @@ export function BatchMappingEditor({
   fields,
   allOptions,
   onSubmit,
+  onReset,
   loading = false,
 }: BatchMappingEditorProps) {
   // Initialize mappings with suggested values
@@ -234,12 +236,24 @@ export function BatchMappingEditor({
         </div>
       </div>
 
-      {/* Footer Info */}
-      <div className="pt-4 mt-4 border-t border-gray-200">
+      {/* Footer */}
+      <div className="pt-4 mt-4 border-t border-gray-200 space-y-3">
         <p className="text-xs text-gray-500">
           AI suggestions are pre-filled based on field names and sample data.
           Review and adjust as needed before confirming.
         </p>
+        {onReset && (
+          <p className="text-sm text-gray-500 text-center py-2">
+            Mapping doesn't look right?{' '}
+            <button
+              onClick={onReset}
+              disabled={loading}
+              className="underline text-gray-600 hover:text-gray-900 transition-colors disabled:opacity-50"
+            >
+              Re-analyze template
+            </button>
+          </p>
+        )}
       </div>
     </div>
   )

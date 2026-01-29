@@ -72,21 +72,54 @@ function buildPromptFromMapping(
       strategyInstructions = 'Keep texts at reasonable length for slides'
   }
 
+  // Detect new template-based format vs legacy slide-based format
+  const slides = mappingJson.slides as Record<string, Record<string, unknown>> | undefined
+  const hasTemplates = slides && Object.keys(slides).some(k => k.startsWith('template_'))
+
+  let structureSection = ''
+  if (hasTemplates) {
+    structureSection = `## Slide Templates (deduplicated)
+
+The mapping uses deduplicated slide templates. Each template key (e.g., "template_project_card") has a \`_meta\` field:
+- \`_meta.type = "per_project"\`: This slide layout is repeated for EACH project. Create one instance per project.
+- \`_meta.type = "global"\`: This slide appears only once in the presentation.
+
+${JSON.stringify(mappingJson, null, 2)}
+
+## Required Slide Order
+Build the PPTX in this exact order:
+1. Global slides that come first (title page, table of contents) — one instance each
+2. **For each project in the data array**, create ALL per_project slides in sequence:
+   - Project A: template_1 → template_2 → ...
+   - Project B: template_1 → template_2 → ...
+   - (Group all slides for one project together before moving to the next)
+3. Global slides that come last (summary, closing) — one instance each
+4. Final slide listing any fields that could not be populated`
+  } else {
+    structureSection = `## Field Mapping
+${JSON.stringify(mappingJson, null, 2)}
+
+## Required Structure
+1. Summary slide with a list of all projects and their status/mood
+2. For each project: slides according to the mapping (Card, Progress, Planning)
+3. Final slide listing fields that could not be populated`
+  }
+
+  const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })
+
   return `Generate a PowerPoint presentation for the project portfolio with the following data:
 
 ## Project Data
 ${JSON.stringify(fetchedData, null, 2)}
 
-## Field Mapping
-${JSON.stringify(mappingJson, null, 2)}
+## Special Values
+- current_date: ${today}
+Any field mapped to "current_date" should use the value above.
+
+${structureSection}
 
 ## Long Text Strategy
 ${strategyInstructions}
-
-## Required Structure
-1. Summary slide with a list of all projects and their status/mood
-2. For each project: slides according to the mapping (Card, Progress, Planning)
-3. Final slide listing fields that could not be populated
 
 ## Design Guidelines
 - Use a professional, clean design

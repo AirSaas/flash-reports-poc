@@ -3,12 +3,16 @@ import { corsHeaders, handleCors } from "../_shared/cors.ts"
 import { getSupabaseClient, getSessionId } from "../_shared/supabase.ts"
 
 interface TemplateAnalysis {
-  slides: Array<{
+  slide_templates?: Array<{
+    template_id: string
+    title: string
+    type: 'per_project' | 'global'
+    example_slide_numbers: number[]
+    fields: Array<{ id: string; name: string }>
+  }>
+  slides?: Array<{
     slide_number: number
-    fields: Array<{
-      id: string
-      name: string
-    }>
+    fields: Array<{ id: string; name: string }>
   }>
 }
 
@@ -41,32 +45,49 @@ serve(async (req) => {
 
     const templateAnalysis = session.template_analysis as TemplateAnalysis | null
 
-    if (!templateAnalysis || !templateAnalysis.slides) {
+    if (!templateAnalysis || (!templateAnalysis.slide_templates && !templateAnalysis.slides)) {
       throw new Error('Template analysis not found')
     }
 
     // Build final mapping JSON structure
     const finalMapping: {
-      slides: Record<string, Record<string, { source: string; status: string }>>
+      slides: Record<string, Record<string, unknown>>
       missing_fields: string[]
     } = {
       slides: {},
       missing_fields: [],
     }
 
-    for (const slide of templateAnalysis.slides) {
-      const slideKey = `slide_${slide.slide_number}`
-      finalMapping.slides[slideKey] = {}
+    if (templateAnalysis.slide_templates) {
+      // New deduplicated format
+      for (const tmpl of templateAnalysis.slide_templates) {
+        const key = `template_${tmpl.template_id}`
+        finalMapping.slides[key] = {
+          _meta: { type: tmpl.type, example_slide_numbers: tmpl.example_slide_numbers },
+        }
 
-      for (const field of slide.fields || []) {
-        const mappedSource = mappings[field.id]
-        if (mappedSource && mappedSource !== 'none') {
-          finalMapping.slides[slideKey][field.id] = {
-            source: mappedSource,
-            status: 'ok',
+        for (const field of tmpl.fields || []) {
+          const mappedSource = mappings[field.id]
+          if (mappedSource && mappedSource !== 'none') {
+            finalMapping.slides[key][field.id] = { source: mappedSource, status: 'ok' }
+          } else {
+            finalMapping.missing_fields.push(field.id)
           }
-        } else {
-          finalMapping.missing_fields.push(field.id)
+        }
+      }
+    } else {
+      // Legacy format
+      for (const slide of templateAnalysis.slides!) {
+        const slideKey = `slide_${slide.slide_number}`
+        finalMapping.slides[slideKey] = {}
+
+        for (const field of slide.fields || []) {
+          const mappedSource = mappings[field.id]
+          if (mappedSource && mappedSource !== 'none') {
+            finalMapping.slides[slideKey][field.id] = { source: mappedSource, status: 'ok' }
+          } else {
+            finalMapping.missing_fields.push(field.id)
+          }
         }
       }
     }

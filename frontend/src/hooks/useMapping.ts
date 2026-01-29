@@ -18,13 +18,27 @@ interface TemplateField {
   slide_number?: number
 }
 
+interface SlideTemplate {
+  template_id: string
+  title: string
+  type: 'per_project' | 'global'
+  example_slide_numbers: number[]
+  fields: TemplateField[]
+}
+
 interface TemplateAnalysis {
-  slides: Array<{
+  // New deduplicated format
+  slide_templates?: SlideTemplate[]
+  total_unique_fields?: number
+  total_slides_in_template?: number
+  projects_detected?: number
+  // Legacy format
+  slides?: Array<{
     slide_number: number
     title: string
     fields: TemplateField[]
   }>
-  total_fields: number
+  total_fields?: number
   analysis_notes: string
 }
 
@@ -154,7 +168,8 @@ export function useMapping(sessionId: string) {
 
       if (response.success && response.analysis) {
         setAnalysis(response.analysis)
-        setProgressMessage(`Found ${response.analysis.total_fields} fields in template`)
+        const fieldCount = response.analysis.total_unique_fields || response.analysis.total_fields
+        setProgressMessage(`Found ${fieldCount} unique fields in template`)
         return response.analysis
       } else {
         throw new Error('Failed to analyze template')

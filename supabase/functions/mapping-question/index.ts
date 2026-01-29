@@ -62,6 +62,9 @@ const AVAILABLE_AIRSAAS_FIELDS = [
   { id: '_metadata.name', label: 'Project Name (Meta)', description: 'Project name from metadata' },
   { id: '_metadata.short_id', label: 'Project ID (Meta)', description: 'Short ID from metadata' },
 
+  // Special
+  { id: 'current_date', label: 'Current Date', description: 'Today\'s date at generation time' },
+
   // Skip option
   { id: 'none', label: 'No mapping (skip)', description: 'Leave this field empty' },
 ]
@@ -131,7 +134,7 @@ serve(async (req) => {
     }
 
     const templateAnalysis = session.template_analysis
-    if (!templateAnalysis || !templateAnalysis.slides) {
+    if (!templateAnalysis || (!templateAnalysis.slide_templates && !templateAnalysis.slides)) {
       throw new Error('Template analysis not found. Please analyze the template first.')
     }
 
@@ -142,15 +145,27 @@ serve(async (req) => {
       mappings: {}
     }
 
-    // If starting fresh, extract all fields from analysis
+    // If starting fresh, extract all fields from analysis (deduplicated by ID)
     if (mappingState.fields.length === 0) {
+      const seenIds = new Set<string>()
       const allFields: TemplateField[] = []
-      for (const slide of templateAnalysis.slides) {
-        for (const field of slide.fields || []) {
-          allFields.push({
-            ...field,
-            slide_number: slide.slide_number
-          })
+      if (templateAnalysis.slide_templates) {
+        for (const tmpl of templateAnalysis.slide_templates) {
+          for (const field of tmpl.fields || []) {
+            if (!seenIds.has(field.id)) {
+              seenIds.add(field.id)
+              allFields.push({ ...field, slide_number: tmpl.example_slide_numbers?.[0] })
+            }
+          }
+        }
+      } else {
+        for (const slide of templateAnalysis.slides) {
+          for (const field of slide.fields || []) {
+            if (!seenIds.has(field.id)) {
+              seenIds.add(field.id)
+              allFields.push({ ...field, slide_number: slide.slide_number })
+            }
+          }
         }
       }
       mappingState.fields = allFields
@@ -177,23 +192,36 @@ serve(async (req) => {
     if (mappingState.currentIndex >= mappingState.fields.length) {
       // All done - generate final mapping JSON
       const finalMapping = {
-        slides: {} as Record<string, Record<string, { source: string; status: string }>>,
+        slides: {} as Record<string, Record<string, unknown>>,
         missing_fields: [] as string[]
       }
 
-      for (const slide of templateAnalysis.slides) {
-        const slideKey = `slide_${slide.slide_number}`
-        finalMapping.slides[slideKey] = {}
-
-        for (const field of slide.fields || []) {
-          const mappedSource = mappingState.mappings[field.id]
-          if (mappedSource && mappedSource !== 'none') {
-            finalMapping.slides[slideKey][field.id] = {
-              source: mappedSource,
-              status: 'ok'
+      if (templateAnalysis.slide_templates) {
+        for (const tmpl of templateAnalysis.slide_templates) {
+          const key = `template_${tmpl.template_id}`
+          finalMapping.slides[key] = {
+            _meta: { type: tmpl.type, example_slide_numbers: tmpl.example_slide_numbers },
+          }
+          for (const field of tmpl.fields || []) {
+            const mappedSource = mappingState.mappings[field.id]
+            if (mappedSource && mappedSource !== 'none') {
+              finalMapping.slides[key][field.id] = { source: mappedSource, status: 'ok' }
+            } else {
+              finalMapping.missing_fields.push(field.id)
             }
-          } else {
-            finalMapping.missing_fields.push(field.id)
+          }
+        }
+      } else {
+        for (const slide of templateAnalysis.slides) {
+          const slideKey = `slide_${slide.slide_number}`
+          finalMapping.slides[slideKey] = {}
+          for (const field of slide.fields || []) {
+            const mappedSource = mappingState.mappings[field.id]
+            if (mappedSource && mappedSource !== 'none') {
+              finalMapping.slides[slideKey][field.id] = { source: mappedSource, status: 'ok' }
+            } else {
+              finalMapping.missing_fields.push(field.id)
+            }
           }
         }
       }

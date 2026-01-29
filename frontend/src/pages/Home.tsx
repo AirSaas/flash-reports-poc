@@ -615,6 +615,10 @@ export function Home() {
               fields={batchFields}
               allOptions={batchAllOptions}
               onSubmit={handleBatchMappingSubmit}
+              onReset={() => {
+                setAnalysisStarted(false)
+                resetMapping()
+              }}
               loading={batchLoading}
             />
           )

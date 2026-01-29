@@ -4,17 +4,25 @@ import { corsHeaders, handleCors } from "../_shared/cors.ts"
 import { getSupabaseClient, getSessionId } from "../_shared/supabase.ts"
 import { getAnthropicClient } from "../_shared/anthropic.ts"
 
-// JSON Schema for structured output
+// JSON Schema for structured output — deduplicated slide templates
 const ANALYSIS_SCHEMA = {
   type: "object",
   properties: {
-    slides: {
+    slide_templates: {
       type: "array",
       items: {
         type: "object",
         properties: {
-          slide_number: { type: "integer" },
+          template_id: { type: "string" },
           title: { type: "string" },
+          type: {
+            type: "string",
+            enum: ["per_project", "global"]
+          },
+          example_slide_numbers: {
+            type: "array",
+            items: { type: "integer" }
+          },
           fields: {
             type: "array",
             items: {
@@ -37,28 +45,48 @@ const ANALYSIS_SCHEMA = {
             }
           }
         },
-        required: ["slide_number", "title", "fields"],
+        required: ["template_id", "title", "type", "example_slide_numbers", "fields"],
         additionalProperties: false
       }
     },
-    total_fields: { type: "integer" },
+    total_unique_fields: { type: "integer" },
+    total_slides_in_template: { type: "integer" },
+    projects_detected: { type: "integer" },
     analysis_notes: { type: "string" }
   },
-  required: ["slides", "total_fields", "analysis_notes"],
+  required: ["slide_templates", "total_unique_fields", "total_slides_in_template", "projects_detected", "analysis_notes"],
   additionalProperties: false
 }
 
-const ANALYSIS_PROMPT = `You are an expert at analyzing PowerPoint templates. Analyze the uploaded PPTX template and identify all placeholders and fields that need to be filled with data.
+const ANALYSIS_PROMPT = `You are an expert at analyzing PowerPoint templates for project portfolio reports.
 
-For each slide, identify:
-1. The slide number and title
-2. All placeholders (like {{field}}, [field], {field}, or descriptive text indicating where data should go)
-3. The data type each field expects (text, number, date, list, image)
-4. The location of each field (title, subtitle, body, table, chart)
+Your task is to analyze a PPTX template and identify UNIQUE slide layouts (templates), deduplicating repeated patterns.
 
-Be thorough - capture every field that could be populated with data. If text appears to be a placeholder description (like "Project Name" or "Owner"), include it as a field.
+## How to analyze
 
-Generate unique IDs for each field using snake_case format (e.g., "project_name", "budget_total").`
+1. Use python-pptx to inspect ALL slides
+2. For each slide, extract: layout master name, number of shapes, shape types, shape positions/sizes, placeholder indices, and text content
+3. **Group slides by structural similarity** using these concrete criteria:
+   - Same slide layout master (slide.slide_layout.name)
+   - Same number and types of shapes (e.g., 3 text boxes + 1 table)
+   - Same placeholder structure (same placeholder indices and types)
+   - Similar spatial arrangement (shapes in roughly the same positions)
+   - Text differs only in the data values (project names, numbers, dates) but structural labels are the same
+4. For each unique layout group, identify all fields that need data (placeholders like {{field}}, [field], {field}, or descriptive text like "Project Name", "Owner")
+
+## Classification
+
+- **per_project**: A slide layout that repeats once per project. If a layout appears N times with different project data filling the same placeholders, it is per_project. Example: "Project Card", "Progress", "Planning".
+- **global**: A slide that appears only once in the entire presentation. Example: title page, portfolio summary, table of contents, closing slide.
+
+## Important
+
+- Return ONLY unique templates, NOT every slide instance
+- If 5 slides share the same layout but have different project data, that is ONE template with example_slide_numbers listing all 5
+- Generate unique snake_case IDs for template_id (e.g., "project_card", "progress_slide") and for field IDs (e.g., "project_name", "budget_total")
+- projects_detected: count how many distinct projects appear in the template (= number of repetitions of per_project slides)
+- Be thorough with field extraction — capture every field that could be populated with data
+- If a template has NO repeated slides (all unique), classify all as "global" and set projects_detected to 0`
 
 /**
  * Download PPTX from Supabase storage and upload to Anthropic Files API
@@ -152,7 +180,7 @@ serve(async (req) => {
             } as unknown as Anthropic.Messages.ContentBlockParam,
             {
               type: 'text',
-              text: 'Analyze this PPTX template. Use code execution to inspect the file with python-pptx and extract all slides, shapes, and placeholder fields. Return the structured JSON with all fields that need to be populated.'
+              text: 'Analyze this PPTX template. Use code execution to inspect the file with python-pptx. Extract all slides, shapes, and placeholder fields. Then GROUP slides by structural similarity to identify unique slide templates. Classify each as per_project (repeats for each project) or global (appears once). Return the deduplicated slide_templates JSON.'
             }
           ]
         }
@@ -194,9 +222,9 @@ serve(async (req) => {
     // Fallback: try to extract from any text content
     if (!analysis) {
       for (const block of response.content) {
-        if (block.type === 'text' && block.text.includes('"slides"')) {
-          // Try to find JSON in the text
-          const jsonMatch = block.text.match(/\{[\s\S]*"slides"[\s\S]*\}/)
+        if (block.type === 'text' && (block.text.includes('"slide_templates"') || block.text.includes('"slides"'))) {
+          const jsonMatch = block.text.match(/\{[\s\S]*"slide_templates"[\s\S]*\}/) ||
+                            block.text.match(/\{[\s\S]*"slides"[\s\S]*\}/)
           if (jsonMatch) {
             try {
               analysis = JSON.parse(jsonMatch[0])
@@ -215,10 +243,10 @@ serve(async (req) => {
       throw new Error('Failed to parse template analysis from Claude response')
     }
 
-    // Validate the analysis structure
-    if (!analysis.slides || !Array.isArray(analysis.slides)) {
+    // Validate the analysis structure (accept new or legacy format)
+    if (!analysis.slide_templates && !analysis.slides) {
       console.error('Invalid analysis structure:', JSON.stringify(analysis))
-      throw new Error('Invalid analysis structure: missing slides array')
+      throw new Error('Invalid analysis structure: missing slide_templates or slides array')
     }
 
     // Save analysis to session (update since we already created it above)
@@ -236,7 +264,7 @@ serve(async (req) => {
       throw new Error(`Failed to save analysis: ${saveError.message}`)
     }
 
-    console.log('Analysis saved successfully. Total fields:', analysis.total_fields)
+    console.log('Analysis saved successfully. Unique fields:', analysis.total_unique_fields || analysis.total_fields)
 
     return new Response(
       JSON.stringify({

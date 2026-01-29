@@ -60,11 +60,16 @@ const AVAILABLE_AIRSAAS_FIELDS = [
   { id: '_metadata.name', label: 'Project Name (Meta)', description: 'Project name from metadata' },
   { id: '_metadata.short_id', label: 'Project ID (Meta)', description: 'Short ID from metadata' },
 
+  // Special
+  { id: 'current_date', label: 'Current Date', description: 'Today\'s date at generation time' },
+
   // Skip option
   { id: 'none', label: 'No mapping (skip)', description: 'Leave this field empty' },
 ]
 
 const BATCH_MAPPING_PROMPT = `You are helping map PowerPoint template fields to AirSaas project data fields.
+
+These fields come from a deduplicated template analysis — repeated slides have been grouped into unique templates, so each field appears only once even if the slide repeats per project.
 
 ## Template Fields to Map
 {template_fields}
@@ -77,9 +82,9 @@ const BATCH_MAPPING_PROMPT = `You are helping map PowerPoint template fields to 
 
 ## Task
 For EACH template field, suggest the best matching AirSaas field based on:
-1. Field name semantics
-2. Data type compatibility
-3. The sample data values
+1. Field name semantics (e.g., "Nom du projet" → project.name)
+2. Data type compatibility (dates → date fields, lists → array fields)
+3. The sample data values for validation
 
 Respond with a JSON array containing one object per template field:
 \`\`\`json
@@ -199,18 +204,39 @@ serve(async (req) => {
     const templateAnalysis = session.template_analysis
     const fetchedProjectsData = session.fetched_projects_data as { projects?: ProjectData[] } | null
 
-    if (!templateAnalysis || !templateAnalysis.slides) {
+    if (!templateAnalysis || (!templateAnalysis.slide_templates && !templateAnalysis.slides)) {
       throw new Error('Template analysis not found. Please analyze the template first.')
     }
 
-    // Extract all fields from template analysis
+    // Extract all fields from template analysis (support new deduplicated + legacy format)
+    // Deduplicate by field ID — same field (e.g. "project_name") may appear in multiple templates
+    const seenFieldIds = new Set<string>()
     const allFields: TemplateField[] = []
-    for (const slide of templateAnalysis.slides) {
-      for (const field of slide.fields || []) {
-        allFields.push({
-          ...field,
-          slide_number: slide.slide_number,
-        })
+    if (templateAnalysis.slide_templates) {
+      // New deduplicated format
+      for (const tmpl of templateAnalysis.slide_templates) {
+        for (const field of tmpl.fields || []) {
+          if (!seenFieldIds.has(field.id)) {
+            seenFieldIds.add(field.id)
+            allFields.push({
+              ...field,
+              slide_number: tmpl.example_slide_numbers?.[0],
+            })
+          }
+        }
+      }
+    } else {
+      // Legacy format
+      for (const slide of templateAnalysis.slides) {
+        for (const field of slide.fields || []) {
+          if (!seenFieldIds.has(field.id)) {
+            seenFieldIds.add(field.id)
+            allFields.push({
+              ...field,
+              slide_number: slide.slide_number,
+            })
+          }
+        }
       }
     }
 
