@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import "npm:zod"
 import Anthropic from "npm:@anthropic-ai/sdk"
 import { corsHeaders, handleCors } from "../_shared/cors.ts"
 import { getSupabaseClient, getSessionId } from "../_shared/supabase.ts"
@@ -140,7 +141,7 @@ serve(async (req) => {
 
   try {
     const sessionId = getSessionId(req)
-    const { templatePath } = await req.json()
+    const { templatePath, uniqueSlideNumbers } = await req.json()
 
     if (!templatePath) {
       throw new Error('templatePath is required')
@@ -180,7 +181,9 @@ serve(async (req) => {
             } as unknown as Anthropic.Messages.ContentBlockParam,
             {
               type: 'text',
-              text: 'Analyze this PPTX template. Use code execution to inspect the file with python-pptx. Extract all slides, shapes, and placeholder fields. Then GROUP slides by structural similarity to identify unique slide templates. Classify each as per_project (repeats for each project) or global (appears once). Return the deduplicated slide_templates JSON.'
+              text: uniqueSlideNumbers && uniqueSlideNumbers.length > 0
+                ? `Analyze this PPTX template. Use code execution to inspect the file with python-pptx. The user has indicated that the UNIQUE slide templates are slides: ${uniqueSlideNumbers.join(', ')}. Only analyze those slides and extract their fields. Classify each as per_project or global based on context. Return the deduplicated slide_templates JSON.`
+                : 'Analyze this PPTX template. Use code execution to inspect the file with python-pptx. Extract all slides, shapes, and placeholder fields. Then GROUP slides by structural similarity to identify unique slide templates. Classify each as per_project (repeats for each project) or global (appears once). Return the deduplicated slide_templates JSON.'
             }
           ]
         }

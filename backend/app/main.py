@@ -115,6 +115,72 @@ async def health_check():
     return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
 
 
+@app.post("/list-slides")
+async def list_slides(
+    x_session_id: str = Header(..., alias="x-session-id")
+):
+    """
+    List all slides in the uploaded PPTX template with titles.
+    Uses python-pptx for fast local extraction (no AI needed).
+    """
+    try:
+        from pptx import Presentation
+        import io
+
+        session = await get_session(x_session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+
+        template_path = session.get('template_path')
+        if not template_path:
+            try:
+                mapping = await get_mapping(x_session_id)
+                if mapping:
+                    template_path = mapping.get('template_path')
+            except Exception:
+                pass
+        if not template_path:
+            raise HTTPException(status_code=400, detail="No template uploaded for this session")
+
+        # Download PPTX from storage
+        pptx_bytes = await download_template(template_path)
+        prs = Presentation(io.BytesIO(pptx_bytes))
+
+        slides = []
+        for i, slide in enumerate(prs.slides):
+            title = ""
+            # Try to get title from title placeholder
+            if slide.shapes.title and slide.shapes.title.text:
+                title = slide.shapes.title.text.strip()
+            else:
+                # Fallback: get first text shape
+                for shape in slide.shapes:
+                    if shape.has_text_frame and shape.text_frame.text.strip():
+                        title = shape.text_frame.text.strip()[:80]
+                        break
+
+            layout_name = slide.slide_layout.name if slide.slide_layout else "Unknown"
+            shape_count = len(slide.shapes)
+
+            slides.append({
+                "slide_number": i + 1,
+                "title": title or f"Slide {i + 1}",
+                "layout": layout_name,
+                "shape_count": shape_count,
+            })
+
+        return JSONResponse(content={
+            "success": True,
+            "slides": slides,
+            "total": len(slides),
+        })
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error listing slides: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/generate-html", response_model=GenerateJobResponse)
 async def generate_html_report(
     request: GenerateJobRequest,

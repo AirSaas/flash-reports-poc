@@ -5,11 +5,12 @@ import { useMapping } from '@hooks/useMapping'
 import { useUpload } from '@hooks/useUpload'
 import { useGenerate } from '@hooks/useGenerate'
 import { updateLongTextStrategy, copyMapping, copyFetchedData, getFetchedDataInfo, fetchProjects } from '@services/session.service'
+import { supabase } from '@lib/supabase'
 import { Header, Sidebar } from '@ui/layout'
 import { EngineSelector } from '@ui/engine'
 import { ProjectsConfig } from '@ui/projects'
 import { TemplateUpload, TemplatePreview, UseLastTemplate } from '@ui/template'
-import { UseLastMapping, UseLastFetchedData, MappingQuestion, BatchMappingEditor } from '@ui/mapping'
+import { UseLastMapping, UseLastFetchedData, MappingQuestion, BatchMappingEditor, SlideSelector } from '@ui/mapping'
 import { LongTextOptions } from '@ui/options'
 import { GenerationProgress, EvaluationResult } from '@ui/generation'
 
@@ -84,7 +85,9 @@ export function Home() {
     batchAllOptions,
     batchLoading,
     startBatchMappingProcess,
+    continueWithAnalysis,
     submitBatchMappings,
+    slideList,
   } = useMapping(sessionId)
 
   const {
@@ -270,11 +273,15 @@ export function Home() {
     goToStep('mapping')
   }, [markStepComplete, goToStep, resetMapping])
 
-  const handleUseLastTemplate = useCallback(() => {
+  const handleUseLastTemplate = useCallback(async () => {
     if (lastTemplateId) {
       setTemplatePath(lastTemplateId)
+      // Save template_path to session in DB so backend can access it
+      await supabase
+        .from('sessions')
+        .upsert({ id: sessionId, template_path: lastTemplateId }, { onConflict: 'id' })
     }
-  }, [lastTemplateId])
+  }, [lastTemplateId, sessionId])
 
   const handleUploadNew = useCallback(() => {
     setShowUploadNew(true)
@@ -517,11 +524,13 @@ export function Home() {
           const steps = useCachedData
             ? [
                 { key: 'fetching_projects', label: 'Using cached project data', icon: '✓', skipped: true },
+                { key: 'listing_slides', label: 'Reading template slides', icon: '📄' },
                 { key: 'analyzing_template', label: 'Analyzing template with AI', icon: '🔍' },
                 { key: 'loading_batch', label: 'Generating mapping suggestions', icon: '📋' },
               ]
             : [
                 { key: 'fetching_projects', label: 'Downloading projects data from AirSaas', icon: '📥' },
+                { key: 'listing_slides', label: 'Reading template slides', icon: '📄' },
                 { key: 'analyzing_template', label: 'Analyzing template with AI', icon: '🔍' },
                 { key: 'loading_batch', label: 'Generating mapping suggestions', icon: '📋' },
               ]
@@ -605,6 +614,27 @@ export function Home() {
                 Try again
               </button>
             </div>
+          )
+        }
+
+        // Show slide selector (user picks unique templates)
+        if (slideList.length > 0 && batchFields.length === 0 &&
+            ['selecting_slides', 'analyzing_template', 'loading_batch'].includes(progressStep)) {
+          return (
+            <SlideSelector
+              slides={slideList}
+              onConfirm={async (selectedSlides) => {
+                if (templatePath) {
+                  await continueWithAnalysis(templatePath, selectedSlides)
+                }
+              }}
+              onAutoAnalyze={async () => {
+                if (templatePath) {
+                  await continueWithAnalysis(templatePath)
+                }
+              }}
+              loading={progressStep === 'analyzing_template' || progressStep === 'loading_batch'}
+            />
           )
         }
 
@@ -764,10 +794,15 @@ export function Home() {
     <div className="min-h-screen bg-gray-100 flex flex-col">
       <Header onReset={handleReset} />
       <div className="flex flex-1 overflow-hidden">
-        <Sidebar currentStep={currentStep} completedSteps={completedSteps} sessionId={sessionId} />
-        <main className="flex-1 overflow-hidden p-6">
-          <div className="max-w-2xl mx-auto bg-white rounded-lg shadow-sm border border-gray-200 p-6 h-full max-h-full overflow-y-auto">
+        <Sidebar currentStep={currentStep} completedSteps={completedSteps} sessionId={sessionId} onNewSession={handleReset} />
+        <main className="flex-1 overflow-hidden p-6 relative">
+          <div className="max-w-2xl mx-auto bg-white rounded-lg shadow-sm border border-gray-200 p-6 h-full max-h-full overflow-y-auto relative z-10">
             {renderContent()}
+          </div>
+          <div className="absolute bottom-0 right-0 w-64 h-64 pointer-events-none z-0 overflow-hidden">
+            <div className="absolute bottom-6 -right-10 w-72 h-[3px] bg-[#3C51E2] opacity-10 rotate-[-35deg] rounded-full" />
+            <div className="absolute bottom-12 -right-6 w-64 h-[2px] bg-[#3C51E2] opacity-[0.07] rotate-[-35deg] rounded-full" />
+            <div className="absolute bottom-[4.5rem] -right-2 w-56 h-[2px] bg-[#3C51E2] opacity-[0.05] rotate-[-35deg] rounded-full" />
           </div>
         </main>
       </div>

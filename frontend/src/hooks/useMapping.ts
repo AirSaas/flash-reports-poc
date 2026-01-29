@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react'
 import { invokeFunction } from '@lib/supabase'
+import { listTemplateSlides, type SlideInfo } from '@services/python-backend.service'
 import type { ProjectsConfig } from '@appTypes/index'
 
 interface MappingOption {
@@ -102,6 +103,8 @@ interface BatchSubmitResponse {
 export type MappingProgressStep =
   | 'idle'
   | 'fetching_projects'
+  | 'listing_slides'
+  | 'selecting_slides'
   | 'analyzing_template'
   | 'loading_questions'
   | 'loading_batch'
@@ -120,6 +123,9 @@ export function useMapping(sessionId: string) {
   const [mappingJson, setMappingJson] = useState<unknown>(null)
   const [fetchedProjectsCount, setFetchedProjectsCount] = useState<number>(0)
   const [fetchComplete, setFetchComplete] = useState(false)
+
+  // Slide listing state
+  const [slideList, setSlideList] = useState<SlideInfo[]>([])
 
   // Batch mapping state
   const [batchFields, setBatchFields] = useState<FieldWithSuggestion[]>([])
@@ -154,16 +160,43 @@ export function useMapping(sessionId: string) {
     }
   }, [sessionId])
 
-  const analyzeTemplate = useCallback(async (templatePath: string) => {
+  const fetchSlideList = useCallback(async () => {
+    setProgressStep('listing_slides')
+    setProgressMessage('Reading template slides...')
+    setError(null)
+
+    try {
+      const response = await listTemplateSlides(sessionId)
+      if (response.success && response.slides) {
+        setSlideList(response.slides)
+        setProgressStep('selecting_slides')
+        setProgressMessage(`Found ${response.total} slides — select the unique templates`)
+        return response.slides
+      } else {
+        throw new Error('Failed to list slides')
+      }
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Failed to list slides'
+      setError(message)
+      setProgressStep('error')
+      return null
+    }
+  }, [sessionId])
+
+  const analyzeTemplate = useCallback(async (templatePath: string, uniqueSlideNumbers?: number[]) => {
     setProgressStep('analyzing_template')
     setProgressMessage('Analyzing template structure with AI...')
     setError(null)
 
     try {
+      const body: Record<string, unknown> = { templatePath }
+      if (uniqueSlideNumbers) {
+        body.uniqueSlideNumbers = uniqueSlideNumbers
+      }
       const response = await invokeFunction<AnalyzeResponse>(
         'analyze-template',
         sessionId,
-        { templatePath }
+        body
       )
 
       if (response.success && response.analysis) {
@@ -318,8 +351,24 @@ export function useMapping(sessionId: string) {
     }
   }, [sessionId])
 
-  const startBatchMappingProcess = useCallback(async (
+  // Continue after user selects slides (or auto-analyze)
+  const continueWithAnalysis = useCallback(async (
     templatePath: string,
+    uniqueSlideNumbers?: number[]
+  ) => {
+    const analysisResult = await analyzeTemplate(templatePath, uniqueSlideNumbers)
+    if (!analysisResult) return null
+
+    const batchResult = await getBatchMappings()
+    if (batchResult) {
+      return analysisResult
+    }
+
+    return null
+  }, [analyzeTemplate, getBatchMappings])
+
+  const startBatchMappingProcess = useCallback(async (
+    _templatePath: string,
     projectsConfig: ProjectsConfig,
     options?: { skipFetchProjects?: boolean }
   ) => {
@@ -328,22 +377,17 @@ export function useMapping(sessionId: string) {
       const fetchSuccess = await fetchProjectsData(projectsConfig)
       if (!fetchSuccess) return null
     } else {
-      setProgressStep('analyzing_template')
       setProgressMessage('Using cached project data...')
     }
 
-    // Step 2: Analyze template
-    const analysisResult = await analyzeTemplate(templatePath)
-    if (!analysisResult) return null
+    // Step 2: List slides for user selection (fast, no AI)
+    const slides = await fetchSlideList()
+    if (!slides) return null
 
-    // Step 3: Get batch suggestions (instead of one-by-one questions)
-    const batchResult = await getBatchMappings()
-    if (batchResult) {
-      return analysisResult
-    }
-
-    return null
-  }, [fetchProjectsData, analyzeTemplate, getBatchMappings])
+    // Flow pauses here — user selects slides in the UI
+    // Then Home.tsx calls continueWithAnalysis()
+    return 'selecting_slides'
+  }, [fetchProjectsData, fetchSlideList])
 
   const resetMapping = useCallback(() => {
     setProgressStep('idle')
@@ -356,7 +400,8 @@ export function useMapping(sessionId: string) {
     setError(null)
     setFetchedProjectsCount(0)
     setFetchComplete(false)
-    // Reset batch state
+    // Reset slide list and batch state
+    setSlideList([])
     setBatchFields([])
     setBatchAllOptions([])
     setBatchLoading(false)
@@ -364,6 +409,7 @@ export function useMapping(sessionId: string) {
 
   // Computed state for backward compatibility
   const analyzing = progressStep === 'fetching_projects' ||
+                    progressStep === 'listing_slides' ||
                     progressStep === 'analyzing_template' ||
                     progressStep === 'loading_questions' ||
                     progressStep === 'loading_batch'
@@ -385,6 +431,9 @@ export function useMapping(sessionId: string) {
     fetchedProjectsCount,
     fetchComplete,
 
+    // Slide selection data
+    slideList,
+
     // Batch mapping data
     batchFields,
     batchAllOptions,
@@ -400,6 +449,7 @@ export function useMapping(sessionId: string) {
 
     // Actions (new batch)
     startBatchMappingProcess,
+    continueWithAnalysis,
     getBatchMappings,
     submitBatchMappings,
   }

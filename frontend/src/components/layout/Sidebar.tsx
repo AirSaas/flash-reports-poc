@@ -6,6 +6,7 @@ interface SidebarProps {
   currentStep: Step
   completedSteps: Step[]
   sessionId?: string
+  onNewSession?: () => void
 }
 
 const STEP_LABELS: Record<Step, string> = {
@@ -24,7 +25,7 @@ const STEP_LABELS: Record<Step, string> = {
 // Steps that can be skipped/hidden in sidebar when not used
 const SKIPPABLE_STEPS: Step[] = ['check_fetched_data', 'check_mapping']
 
-export function Sidebar({ currentStep, completedSteps, sessionId }: SidebarProps) {
+export function Sidebar({ currentStep, completedSteps, sessionId, onNewSession }: SidebarProps) {
   const currentIndex = STEP_ORDER.indexOf(currentStep)
 
   // Filter out skippable steps unless they are the current step
@@ -33,7 +34,7 @@ export function Sidebar({ currentStep, completedSteps, sessionId }: SidebarProps
   )
 
   return (
-    <aside className="w-64 bg-gray-50 border-r border-gray-200 p-4 flex flex-col">
+    <aside className="w-64 bg-gray-50 border-r border-gray-200 p-4 flex flex-col relative overflow-hidden">
       <nav className="space-y-2 flex-1">
         {visibleSteps.map((step, index) => {
           const isCompleted = completedSteps.includes(step)
@@ -70,11 +71,25 @@ export function Sidebar({ currentStep, completedSteps, sessionId }: SidebarProps
       {/* Session ID for debugging */}
       {sessionId && (
         <div className="pt-4 border-t border-gray-200 mt-4">
-          <p className="text-[10px] text-gray-400 font-mono break-all">
+          <button
+            onClick={onNewSession}
+            title="Click to create a new session"
+            className="text-[10px] text-gray-400 font-mono break-all hover:text-blue-600 transition-colors cursor-pointer text-left"
+          >
             {sessionId}
-          </p>
+          </button>
         </div>
       )}
+      <img
+        src="/mini.png"
+        alt=""
+        className="absolute bottom-32 left-1/2 -translate-x-1/2 w-36 opacity-[0.06] pointer-events-none select-none"
+      />
+      <div className="absolute bottom-0 left-0 w-full h-20 pointer-events-none overflow-hidden">
+        <div className="absolute bottom-3 -left-4 w-48 h-[2px] bg-[#3C51E2] opacity-10 rotate-[-15deg] rounded-full" />
+        <div className="absolute bottom-7 -left-2 w-40 h-[2px] bg-[#3C51E2] opacity-[0.07] rotate-[-15deg] rounded-full" />
+        <div className="absolute bottom-11 left-0 w-32 h-[2px] bg-[#3C51E2] opacity-[0.05] rotate-[-15deg] rounded-full" />
+      </div>
     </aside>
   )
 }

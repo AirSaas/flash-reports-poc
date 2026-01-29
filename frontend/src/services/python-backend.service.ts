@@ -104,6 +104,41 @@ export async function analyzeTemplate(
   return response.json()
 }
 
+export interface SlideInfo {
+  slide_number: number
+  title: string
+  layout: string
+  shape_count: number
+}
+
+interface ListSlidesResponse {
+  success: boolean
+  slides: SlideInfo[]
+  total: number
+}
+
+/**
+ * List all slides in the uploaded PPTX template (fast, no AI).
+ */
+export async function listTemplateSlides(
+  sessionId: string
+): Promise<ListSlidesResponse> {
+  const response = await fetch(`${PYTHON_BACKEND_URL}/list-slides`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-session-id': sessionId,
+    },
+  })
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Failed to list slides' }))
+    throw new Error(error.detail || `HTTP ${response.status}`)
+  }
+
+  return response.json()
+}
+
 /**
  * Generate HTML directly (synchronous, for testing).
  * Warning: This can take several minutes.

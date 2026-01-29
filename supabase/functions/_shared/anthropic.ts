@@ -1,3 +1,4 @@
+import "npm:zod"
 import Anthropic from "npm:@anthropic-ai/sdk"
 
 export function getAnthropicClient(): Anthropic {
