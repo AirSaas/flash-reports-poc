@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import type { Step, LongTextStrategy, ProjectsConfig as ProjectsConfigType } from '@appTypes/index'
 import { useSession } from '@hooks/useSession'
 import { useMapping } from '@hooks/useMapping'
@@ -12,6 +12,40 @@ import { TemplateUpload, TemplatePreview, UseLastTemplate } from '@ui/template'
 import { UseLastMapping, UseLastFetchedData, MappingQuestion, BatchMappingEditor } from '@ui/mapping'
 import { LongTextOptions } from '@ui/options'
 import { GenerationProgress, EvaluationResult } from '@ui/generation'
+
+const ANALYSIS_COUNTDOWN_SECONDS = 3 * 60 // 3 minutes
+
+function AnalysisCountdown() {
+  const [remaining, setRemaining] = useState(ANALYSIS_COUNTDOWN_SECONDS)
+  const startRef = useRef(Date.now())
+
+  useEffect(() => {
+    startRef.current = Date.now()
+    const interval = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - startRef.current) / 1000)
+      setRemaining(Math.max(0, ANALYSIS_COUNTDOWN_SECONDS - elapsed))
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const mins = Math.floor(remaining / 60)
+  const secs = remaining % 60
+  const progress = 1 - remaining / ANALYSIS_COUNTDOWN_SECONDS
+
+  return (
+    <div className="space-y-2">
+      <div className="w-full bg-gray-200 rounded-full h-2">
+        <div
+          className="bg-blue-500 h-2 rounded-full transition-all duration-1000"
+          style={{ width: `${Math.min(progress * 100, 100)}%` }}
+        />
+      </div>
+      <p className="text-sm text-gray-500 text-center">
+        Estimated time remaining: {mins}:{secs.toString().padStart(2, '0')}
+      </p>
+    </div>
+  )
+}
 
 export function Home() {
   const {
@@ -540,6 +574,10 @@ export function Home() {
                   )
                 })}
               </div>
+
+              {progressStep === 'analyzing_template' && (
+                <AnalysisCountdown />
+              )}
 
               <p className="text-sm text-gray-400 text-center">
                 This may take a few minutes depending on the number of projects...

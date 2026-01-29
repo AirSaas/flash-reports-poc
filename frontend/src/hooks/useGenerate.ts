@@ -315,10 +315,6 @@ export function useGenerate(sessionId: string, engine: Engine | null): UseGenera
    */
   const evaluate = useCallback(
     async (reportId: string): Promise<EvaluateResponse | null> => {
-      if (engine === 'claude-pptx') {
-        return null
-      }
-
       setEvaluating(true)
       setCurrentStep('evaluating')
       setError(null)
@@ -376,11 +372,6 @@ export function useGenerate(sessionId: string, engine: Engine | null): UseGenera
   }, [result, evaluationCount, evaluate])
 
   const generateWithEvaluation = useCallback(async (): Promise<GenerationResult | null> => {
-    // For Claude PPTX engine, skip evaluation
-    if (engine === 'claude-pptx') {
-      return generate()
-    }
-
     let currentResult = await generate()
     if (!currentResult) return null
 

@@ -136,23 +136,12 @@ serve(async (req) => {
 
     console.log('Calling Claude to analyze template with structured outputs...')
 
-    // Call Claude with PPTX skill and structured outputs
-    // Using Haiku for faster response to avoid gateway timeout
+    // Call Claude with code execution to analyze the PPTX file
     const response = await client.beta.messages.create({
-      model: "claude-haiku-4-5-20251001",
+      model: "claude-sonnet-4-5-20250929",
       max_tokens: 16384,
-      temperature: 0,
-      betas: ["code-execution-2025-08-25", "skills-2025-10-02", "files-api-2025-04-14", "structured-outputs-2025-11-13"],
+      betas: ["code-execution-2025-08-25", "files-api-2025-04-14", "structured-outputs-2025-11-13"],
       system: ANALYSIS_PROMPT,
-      container: {
-        skills: [
-          {
-            type: "anthropic",
-            skill_id: "pptx",
-            version: "latest"
-          }
-        ]
-      },
       messages: [
         {
           role: 'user',
@@ -163,7 +152,7 @@ serve(async (req) => {
             } as unknown as Anthropic.Messages.ContentBlockParam,
             {
               type: 'text',
-              text: 'Analyze this PPTX template and return the structured JSON with all fields that need to be populated.'
+              text: 'Analyze this PPTX template. Use code execution to inspect the file with python-pptx and extract all slides, shapes, and placeholder fields. Return the structured JSON with all fields that need to be populated.'
             }
           ]
         }

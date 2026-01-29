@@ -34,7 +34,7 @@ serve(async (req) => {
     // Verify report exists and belongs to session
     const { data: report, error: reportError } = await supabase
       .from('generated_reports')
-      .select('id, pptx_path, session_id')
+      .select('id, pptx_path, session_id, engine')
       .eq('id', reportId)
       .eq('session_id', sessionId)
       .single()
@@ -44,7 +44,28 @@ serve(async (req) => {
     }
 
     if (!report.pptx_path) {
-      throw new Error('Report has no PPTX file to evaluate')
+      throw new Error('Report has no file to evaluate')
+    }
+
+    // Check if this is a claude-html report — look for PDF in generation job result
+    let pdfPath: string | null = null
+    if (report.engine === 'claude-html') {
+      const { data: genJob } = await supabase
+        .from('generation_jobs')
+        .select('result')
+        .eq('session_id', sessionId)
+        .eq('engine', 'claude-html')
+        .eq('status', 'completed')
+        .order('completed_at', { ascending: false })
+        .limit(1)
+        .single()
+
+      if (genJob?.result?.pdfStoragePath) {
+        pdfPath = genJob.result.pdfStoragePath
+        console.log(`[CREATE-EVAL-JOB] Found PDF storage path: ${pdfPath}`)
+      } else {
+        console.log('[CREATE-EVAL-JOB] No PDF path found, will use pptx_path (HTML)')
+      }
     }
 
     // Get session for project count
@@ -75,7 +96,8 @@ serve(async (req) => {
         report_id: reportId,
         input_data: {
           reportId,
-          pptxPath: report.pptx_path,
+          pptxPath: pdfPath ? undefined : report.pptx_path,
+          pdfPath: pdfPath || undefined,
           projectCount,
         },
       })

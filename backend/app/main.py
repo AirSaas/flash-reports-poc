@@ -387,12 +387,14 @@ async def process_html_generation(
 
         # Generate PDF from HTML (optional - depends on system libraries)
         report_pdf_url = None
+        report_pdf_storage_path = None
         if PDF_GENERATION_AVAILABLE and html_to_pdf:
             print(f"         Converting HTML to PDF...")
             try:
                 report_pdf_bytes = html_to_pdf(final_html)
                 report_pdf_filename = f"report_{timestamp}.pdf"
                 report_pdf_url = await upload_pdf(session_id, report_pdf_bytes, report_pdf_filename)
+                report_pdf_storage_path = f"{session_id}/{report_pdf_filename}"
                 print(f"         Uploaded PDF to: {report_pdf_url}")
             except Exception as pdf_error:
                 print(f"         Warning: PDF generation failed: {pdf_error}")
@@ -412,7 +414,8 @@ async def process_html_generation(
             result={
                 "reportId": report_id,
                 "htmlUrl": html_url,
-                "pdfUrl": report_pdf_url,  # Now this is the report PDF, not template PDF
+                "pdfUrl": report_pdf_url,
+                "pdfStoragePath": report_pdf_storage_path,
                 "templateHtmlUrl": template_html_url,
                 "templatePdfUrl": pdf_url if pdf_bytes else None,
                 "projectCount": len(projects),
