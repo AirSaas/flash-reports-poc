@@ -291,6 +291,7 @@ serve(async (req) => {
     const response = await client.messages.create({
       model: 'claude-sonnet-4-5-20250929',
       max_tokens: 4096,
+      temperature: 0.1,
       messages: [{ role: 'user', content: prompt }],
     })
 

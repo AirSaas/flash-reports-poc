@@ -109,6 +109,7 @@ export function Home() {
     generateWithEvaluation,
     generate,
     reEvaluate,
+    regenerate,
   } = useGenerate(sessionId, engine)
 
   const [templatePath, setTemplatePath] = useState<string | null>(null)
@@ -774,6 +775,26 @@ export function Home() {
                     )}
                   </button>
                 )}
+
+                {/* Regenerate button */}
+                <button
+                  onClick={regenerate}
+                  disabled={generating || evaluating}
+                  className={`w-full border rounded-lg py-2 px-4 font-medium transition-colors ${
+                    generating || evaluating
+                      ? 'border-gray-300 text-gray-400 cursor-not-allowed'
+                      : 'border-orange-600 text-orange-600 hover:bg-orange-50'
+                  }`}
+                >
+                  {generating ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-orange-600" />
+                      Regenerating...
+                    </span>
+                  ) : (
+                    'Regenerate Report'
+                  )}
+                </button>
               </div>
             )}
             <button

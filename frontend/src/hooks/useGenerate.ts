@@ -36,6 +36,7 @@ interface UseGenerateReturn {
   generate: () => Promise<GenerationResult | null>
   evaluate: (reportId: string) => Promise<EvaluateResponse | null>
   reEvaluate: () => Promise<EvaluateResponse | null>
+  regenerate: () => Promise<GenerationResult | null>
   generateWithEvaluation: () => Promise<GenerationResult | null>
 }
 
@@ -371,6 +372,16 @@ export function useGenerate(sessionId: string, engine: Engine | null): UseGenera
     return evaluate(result.reportId)
   }, [result, evaluationCount, evaluate])
 
+  const regenerate = useCallback(async (): Promise<GenerationResult | null> => {
+    setEvaluation(null)
+    setEvaluationCount(0)
+    const newResult = await generate()
+    if (!newResult) return null
+
+    await evaluate(newResult.reportId)
+    return newResult
+  }, [generate, evaluate])
+
   const generateWithEvaluation = useCallback(async (): Promise<GenerationResult | null> => {
     let currentResult = await generate()
     if (!currentResult) return null
@@ -411,6 +422,7 @@ export function useGenerate(sessionId: string, engine: Engine | null): UseGenera
     generate,
     evaluate,
     reEvaluate,
+    regenerate,
     generateWithEvaluation,
   }
 }

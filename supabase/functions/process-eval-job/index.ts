@@ -327,6 +327,7 @@ serve(async (req) => {
     const createParams: Record<string, unknown> = {
       model: "claude-sonnet-4-5-20250929",
       max_tokens: 4096,
+      temperature: 0,
       betas,
       system: systemPrompt,
       messages: [{ role: 'user', content: messageContent }],

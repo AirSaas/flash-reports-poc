@@ -60,13 +60,13 @@ function buildPromptFromMapping(
 
   switch (longTextStrategy) {
     case 'summarize':
-      strategyInstructions = 'Summarize long texts to a maximum of 2 sentences'
+      strategyInstructions = 'The user chose "Summarize": condense long texts into 1-2 sentences that capture the key point. Do NOT truncate with "..." and do NOT omit the field. Always summarize.'
       break
     case 'ellipsis':
-      strategyInstructions = 'Truncate long texts with "..." after 100 characters'
+      strategyInstructions = 'The user chose "Truncate": cut long texts after ~100 characters and append "...". Do NOT summarize or rewrite the text and do NOT omit the field. Just truncate exactly as-is.'
       break
     case 'omit':
-      strategyInstructions = 'Omit fields with very long texts'
+      strategyInstructions = 'The user chose "Omit": remove fields that contain long texts (>200 characters) entirely. Do NOT summarize and do NOT truncate. Simply leave them out of the slide.'
       break
     default:
       strategyInstructions = 'Keep texts at reasonable length for slides'
@@ -118,8 +118,9 @@ Any field mapped to "current_date" should use the value above.
 
 ${structureSection}
 
-## Long Text Strategy
+## Long Text Strategy (STRICT — follow exactly, no other approach)
 ${strategyInstructions}
+You MUST apply this strategy consistently to ALL long text fields. Do not mix strategies or choose a different approach than the one specified above.
 
 ## Design Guidelines
 - Use a professional, clean design
@@ -130,6 +131,18 @@ ${strategyInstructions}
 - Include project names clearly on each slide
 - Use tables for budget and effort data
 - Use timelines or Gantt-style visuals for milestones
+
+## Creative Visual Resources
+When the data contains enough information, enrich the slides with visual elements:
+- **Gantt charts / timelines**: If milestone or planning dates are available, create Gantt-style bars or timeline visuals
+- **Progress bars**: For percentage fields (completion, progress, budget consumed), use graphical progress bars instead of plain numbers
+- **Pie / donut charts**: For budget breakdowns, effort distribution, or status distribution across projects
+- **Bar charts**: For comparing metrics across projects (budget, effort, duration)
+- **Status icons / traffic lights**: Visual indicators for risk, mood, weather status
+- **KPI cards**: For key metrics, use visually distinct card-style layouts with large numbers and labels
+- **RAG matrices**: If risk data is available, create Red/Amber/Green summary matrices
+
+IMPORTANT: Only create these visuals when you have ALL the necessary data to populate them correctly. If a field is empty or missing, do NOT invent data — leave the visual out or show a placeholder with "No data available". Never fabricate numbers, dates, or statuses.
 
 Generate the PPTX file now.`
 }
@@ -245,6 +258,7 @@ serve(async (req) => {
     const response = await client.beta.messages.create({
       model: "claude-sonnet-4-5-20250929",
       max_tokens: 16384,
+      temperature: 0.4,
       betas: ["code-execution-2025-08-25", "skills-2025-10-02"],
       container: {
         skills: [

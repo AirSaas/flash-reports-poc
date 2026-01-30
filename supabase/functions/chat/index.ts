@@ -275,6 +275,7 @@ serve(async (req) => {
             const streamingResponse = await client.beta.messages.stream({
               model: "claude-sonnet-4-5-20250929",
               max_tokens: 8192,
+              temperature: 0.7,
               betas: ["code-execution-2025-08-25", "skills-2025-10-02", "files-api-2025-04-14"],
               system: SYSTEM_PROMPT,
               container: {
@@ -394,6 +395,7 @@ serve(async (req) => {
     const response = await client.beta.messages.create({
       model: "claude-sonnet-4-5-20250929",
       max_tokens: 8192,
+      temperature: 0.7,
       betas: ["code-execution-2025-08-25", "skills-2025-10-02", "files-api-2025-04-14"],
       system: SYSTEM_PROMPT,
       container: {

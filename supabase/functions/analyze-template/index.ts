@@ -167,8 +167,9 @@ serve(async (req) => {
 
     // Call Claude with code execution to analyze the PPTX file
     const response = await client.beta.messages.create({
-      model: "claude-haiku-4-5-20251001",
+      model: "claude-sonnet-4-5-20250929",
       max_tokens: 16384,
+      temperature: 0,
       betas: ["code-execution-2025-08-25", "files-api-2025-04-14", "structured-outputs-2025-11-13"],
       system: ANALYSIS_PROMPT,
       messages: [
