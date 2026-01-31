@@ -198,6 +198,28 @@ async def save_generated_report(
     raise RuntimeError("Failed to save generated report")
 
 
+async def upload_pptx(session_id: str, pptx_bytes: bytes, filename: str = "report.pptx") -> str:
+    """
+    Upload generated PPTX file to Supabase Storage.
+
+    Returns:
+        Public URL of the uploaded file
+    """
+    supabase = get_supabase_client()
+
+    file_path = f"{session_id}/{filename}"
+
+    result = supabase.storage.from_('outputs').upload(
+        file_path,
+        pptx_bytes,
+        {"content-type": "application/vnd.openxmlformats-officedocument.presentationml.presentation"}
+    )
+
+    public_url = supabase.storage.from_('outputs').get_public_url(file_path)
+
+    return public_url
+
+
 async def get_job_status(job_id: str) -> Optional[Dict[str, Any]]:
     """
     Get the current status of a generation job.

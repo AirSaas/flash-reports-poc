@@ -73,8 +73,63 @@ CRITICAL - CHARACTER HANDLING:
 - ALL elements must fit WITHIN the 960×540 container - no overflow
 - Use overflow: hidden on each .slide container
 - Layer elements with z-index when they overlap
-- Use percentage widths inside containers for responsive internal layouts
+- Use PIXEL widths (not percentages) on all positioned elements and containers
+- Every absolutely-positioned div MUST have width in pixels in its inline style
 </layout_rules>
+
+<pptx_compatibility>
+CRITICAL - HTML STRUCTURE STANDARDS FOR PPTX CONVERSION:
+The generated HTML will be automatically converted to PPTX by a script.
+If you do NOT follow these rules exactly, the PPTX will be broken or empty.
+
+REQUIRED CSS CLASS NAMES (use these exact names — the converter searches for them):
+- .top-bar — colored bar at the top of each slide
+- .date-box — date/period box (positioned top-right)
+- .main-title — slide title text
+- .footer-bar — footer bar at the bottom (NOT .bottom-bar, NOT .footer)
+- .page-number — page number INSIDE .footer-bar
+- .logo — logo text INSIDE .footer-bar
+- .section-header — section header with border-top separator line
+- .section-title — title text INSIDE .section-header
+- .section-box — bordered content box that holds the actual content (bullet-items, tables, text)
+- .bullet-item — individual bullet point item (with colored square bullet via CSS ::before)
+- .sub-label — bold sub-label/category within a section-box
+- .trend-box / .trend-item — KPI/trend indicators row
+- .link-text — styled hyperlinks
+
+MANDATORY STRUCTURE RULES (the PPTX converter WILL FAIL without these):
+
+1. SECTION NESTING — Each content section MUST be a SINGLE wrapper div with position:absolute that contains BOTH the .section-header AND the .section-box as children:
+   CORRECT:
+     <div style="position:absolute; top:85px; left:20px; width:580px;">
+       <div class="section-header"><span class="section-title">BUDGET</span></div>
+       <div class="section-box">...content here...</div>
+     </div>
+   WRONG (will produce empty sections in PPTX):
+     <div style="position:absolute; top:85px; left:20px; width:580px;">
+       <div class="section-header"><span class="section-title">BUDGET</span></div>
+     </div>
+     <div class="section-box" style="top:120px; left:20px;">...content...</div>
+
+2. FOOTER NESTING — .page-number and .logo MUST be children of .footer-bar:
+   CORRECT: <div class="footer-bar"><span class="page-number">1</span><span class="logo">Air</span></div>
+   WRONG:   <div class="footer-bar"></div><div class="page-number">1</div>
+
+3. PIXEL VALUES — ALL top, left, width, height, font-size MUST be in pixels (px), NEVER percentages.
+
+4. TABLES — Use standard <table><tr><th>/<td> with pixel widths on cells. NO display:flex or display:grid.
+
+5. PROGRESS BARS — Nested divs: outer (background, border-radius) + inner (fill color, width in %).
+
+6. NO FLEXBOX/GRID — Do NOT use display:flex or display:grid anywhere in the HTML.
+
+CONTENT RICHNESS — Despite the structural rules above, be CREATIVE with the visual design:
+- Use colored progress bars, timeline indicators, trend arrows
+- Create rich section content with bullet points, sub-labels, bold text
+- Use colored status indicators (small spans with background-color and border-radius)
+- Add visual separators, borders, and section dividers for professional look
+- Every slide should feel dense with useful information, not empty
+</pptx_compatibility>
 
 <text_handling>
 - Calculate font-size to ensure ALL text fits without truncation
@@ -113,11 +168,13 @@ When replicating boxes, cards, or bordered containers:
 
 <tables_and_grids>
 For tables and grid layouts:
-- Use CSS Grid or Flexbox for complex layouts
-- Match column widths proportionally
+- Use standard HTML <table>, <tr>, <th>, <td> elements - NO CSS Grid or Flexbox for tables
+- Set column widths in PIXELS directly on <td>/<th> elements via inline style (e.g., style="width: 240px;")
+- DO NOT use percentage widths on table cells - always convert to pixel values based on the 960px slide width
 - Replicate header styling (background color, font weight, borders)
 - Alternate row colors if present in the original
 - Match cell padding and text alignment
+- Set table width in pixels via inline style
 </tables_and_grids>
 
 <quality_checklist>

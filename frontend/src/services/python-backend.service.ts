@@ -19,6 +19,7 @@ interface JobStatus {
     reportId?: string
     htmlUrl?: string
     pdfUrl?: string
+    pptxUrl?: string
     templateHtmlUrl?: string
     templatePdfUrl?: string
     projectCount?: number

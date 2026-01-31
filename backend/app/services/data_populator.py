@@ -257,6 +257,26 @@ ABSOLUTE CSS RESTRICTIONS - NEVER VIOLATE:
 7. If the original template already has flex/grid in its <style>, keep it but NEVER add new ones
 </critical_css_rules>
 
+<pptx_compatibility>
+CRITICAL — PRESERVE STRUCTURE FOR PPTX CONVERSION (breaking these = broken PPTX):
+
+1. SECTION NESTING — Each section MUST keep .section-header and .section-box as children
+   of the SAME parent div[position:absolute]. NEVER split them into sibling divs.
+   The converter reads: div[abs] > .section-header + .section-box
+
+2. FOOTER — .page-number and .logo MUST stay inside .footer-bar as children, not siblings.
+
+3. CLASS NAMES — Preserve ALL existing class names exactly: .top-bar, .date-box, .main-title,
+   .footer-bar, .page-number, .logo, .section-header, .section-title, .section-box,
+   .bullet-item, .sub-label, .trend-box, .trend-item, .link-text
+
+4. PIXEL WIDTHS — Keep all widths in px. Never convert to percentages.
+
+5. NO FLEX/GRID — Never add display:flex or display:grid.
+
+6. TABLES — Keep as <table><tr><td> with px widths on cells.
+</pptx_compatibility>
+
 <overflow_prevention>
 OVERFLOW AND TEXT OVERLAP PREVENTION - MANDATORY:
 1. Text must NEVER overflow its container or overlap with adjacent elements
@@ -363,6 +383,9 @@ DATA FIELD PRIORITIES (what to show when available):
    - If truly no data exists, use sensible placeholders like "N/A", "-", or "Not specified"
    - NEVER leave a visible text area empty or with just whitespace
    - A slide with blank content is UNACCEPTABLE - always populate with something meaningful
+   - A slide with ONLY headers/footers and no section content is UNACCEPTABLE
+   - Every section-box must contain visible content (bullet-items, text, tables, indicators)
+   - Fill section-boxes with bullet-items, sub-labels, progress info, team data, timelines, etc.
 
 5. INTELLIGENT DATA FILLING (when no direct mapping exists):
    - Analyze ALL available data in project_data
@@ -541,6 +564,26 @@ ABSOLUTE CSS RESTRICTIONS - NEVER VIOLATE:
 6. If the original template already has flex/grid in its <style>, keep it but NEVER add new ones
 </critical_css_rules>
 
+<pptx_compatibility>
+CRITICAL — PRESERVE STRUCTURE FOR PPTX CONVERSION (breaking these = broken PPTX):
+
+1. SECTION NESTING — Each section MUST keep .section-header and .section-box as children
+   of the SAME parent div[position:absolute]. NEVER split them into sibling divs.
+   The converter reads: div[abs] > .section-header + .section-box
+
+2. FOOTER — .page-number and .logo MUST stay inside .footer-bar as children, not siblings.
+
+3. CLASS NAMES — Preserve ALL existing class names exactly: .top-bar, .date-box, .main-title,
+   .footer-bar, .page-number, .logo, .section-header, .section-title, .section-box,
+   .bullet-item, .sub-label, .trend-box, .trend-item, .link-text
+
+4. PIXEL WIDTHS — Keep all widths in px. Never convert to percentages.
+
+5. NO FLEX/GRID — Never add display:flex or display:grid.
+
+6. TABLES — Keep as <table><tr><td> with px widths on cells.
+</pptx_compatibility>
+
 <overflow_prevention>
 OVERFLOW AND TEXT OVERLAP PREVENTION - MANDATORY:
 1. Text must NEVER overflow its container or overlap with adjacent elements
@@ -658,6 +701,9 @@ DATA PRIORITIES (populate these fields first):
    - If truly no data exists, use sensible placeholders like "N/A", "-", or "Not specified"
    - NEVER leave a visible text area empty or with just whitespace
    - A slide with blank content is UNACCEPTABLE - always populate with something meaningful
+   - A slide with ONLY headers/footers and no section content is UNACCEPTABLE
+   - Every section-box must contain visible content (bullet-items, text, tables, indicators)
+   - Fill section-boxes with bullet-items, sub-labels, progress info, team data, timelines, etc.
 
 6. INTELLIGENT DATA FILLING (when no direct mapping exists):
    - Analyze ALL available data in each project

@@ -22,6 +22,7 @@ interface GenerationResult {
   prompt?: string
   htmlUrl?: string
   pdfUrl?: string
+  generatedPptxUrl?: string
 }
 
 interface UseGenerateReturn {
@@ -84,6 +85,7 @@ export function useGenerate(sessionId: string, engine: Engine | null): UseGenera
             pptxUrl: job.result.pdfUrl || job.result.htmlUrl || '',
             htmlUrl: job.result.htmlUrl,
             pdfUrl: job.result.pdfUrl,
+            generatedPptxUrl: job.result.pptxUrl,
             reportId: job.result.reportId!,
             iteration: 1,
           }

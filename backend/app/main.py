@@ -42,11 +42,22 @@ from app.services.supabase_client import (
     download_template,
     upload_generated_html,
     upload_pdf,
+    upload_pptx,
     create_generation_job,
     update_job_status,
     save_generated_report,
     get_job_status
 )
+
+# PPTX generation from HTML
+PPTX_GENERATION_AVAILABLE = False
+html_to_pptx_convert = None
+try:
+    from app.services.pptx_generator import html_to_pptx
+    html_to_pptx_convert = html_to_pptx
+    PPTX_GENERATION_AVAILABLE = True
+except (ImportError, OSError) as e:
+    print(f"Warning: PPTX generation from HTML not available: {e}")
 
 
 app = FastAPI(
@@ -472,6 +483,21 @@ async def process_html_generation(
         else:
             print(f"         PDF generation skipped (dependencies not available)")
 
+        # Generate PPTX from HTML (convert HTML slides to editable PowerPoint)
+        report_pptx_url = None
+        if PPTX_GENERATION_AVAILABLE and html_to_pptx_convert:
+            print(f"         Converting HTML to PPTX...")
+            try:
+                report_pptx_bytes = html_to_pptx_convert(final_html)
+                report_pptx_filename = f"report_{timestamp}.pptx"
+                report_pptx_url = await upload_pptx(session_id, report_pptx_bytes, report_pptx_filename)
+                print(f"         Uploaded PPTX to: {report_pptx_url}")
+            except Exception as pptx_error:
+                print(f"         Warning: PPTX generation failed: {pptx_error}")
+                report_pptx_url = None
+        else:
+            print(f"         PPTX generation skipped (dependencies not available)")
+
         # Save report reference
         report_id = await save_generated_report(session_id, html_url, "claude-html")
         step_times['step6'] = time.time() - step_start
@@ -486,6 +512,7 @@ async def process_html_generation(
                 "htmlUrl": html_url,
                 "pdfUrl": report_pdf_url,
                 "pdfStoragePath": report_pdf_storage_path,
+                "pptxUrl": report_pptx_url,
                 "templateHtmlUrl": template_html_url,
                 "templatePdfUrl": pdf_url if pdf_bytes else None,
                 "projectCount": len(projects),

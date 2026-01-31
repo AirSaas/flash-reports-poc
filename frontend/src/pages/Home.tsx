@@ -382,6 +382,12 @@ export function Home() {
     }
   }, [result, engine])
 
+  const handleDownloadPptx = useCallback(() => {
+    if (result?.generatedPptxUrl) {
+      window.open(result.generatedPptxUrl, '_blank')
+    }
+  }, [result])
+
   const handleDownloadPrompt = useCallback(() => {
     if (result?.prompt) {
       // Create a blob with the prompt content and download it
@@ -717,6 +723,8 @@ export function Home() {
             prompt={result?.prompt}
             onDownload={handleDownloadReport}
             onDownloadPrompt={handleDownloadPrompt}
+            onDownloadPptx={handleDownloadPptx}
+            generatedPptxUrl={result?.generatedPptxUrl}
             isHtmlEngine={engine === 'claude-pptx'}
           />
         )
@@ -743,6 +751,17 @@ export function Home() {
                     ? (result.pdfUrl ? 'Download PDF' : 'Open Report (Print to PDF)')
                     : 'Download PPTX'}
                 </button>
+
+                {/* Download PPTX button */}
+                {result.generatedPptxUrl && (
+                  <button
+                    onClick={handleDownloadPptx}
+                    className="w-full bg-blue-600 text-white rounded-lg py-3 px-4 font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <span className="text-xl">📊</span>
+                    Download PPTX
+                  </button>
+                )}
 
                 {/* Download Prompt button */}
                 {result.prompt && (

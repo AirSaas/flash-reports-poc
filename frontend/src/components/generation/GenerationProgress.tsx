@@ -49,6 +49,8 @@ interface GenerationProgressProps {
   prompt?: string | null
   onDownload?: () => void
   onDownloadPrompt?: () => void
+  onDownloadPptx?: () => void
+  generatedPptxUrl?: string | null
   isHtmlEngine?: boolean
 }
 
@@ -74,6 +76,8 @@ export function GenerationProgress({
   prompt,
   onDownload,
   onDownloadPrompt,
+  onDownloadPptx,
+  generatedPptxUrl,
   isHtmlEngine = false,
 }: GenerationProgressProps) {
   const { minutes, seconds, progress } = useCountdown(
@@ -179,6 +183,15 @@ export function GenerationProgress({
               <span>📥</span>
               {downloadButtonText}
             </button>
+            {generatedPptxUrl && onDownloadPptx && (
+              <button
+                onClick={onDownloadPptx}
+                className="bg-blue-600 text-white rounded-lg py-2.5 px-4 font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+              >
+                <span>📊</span>
+                PPTX
+              </button>
+            )}
             {prompt && onDownloadPrompt && (
               <button
                 onClick={onDownloadPrompt}
@@ -233,6 +246,15 @@ export function GenerationProgress({
               <span className="text-xl">📥</span>
               {downloadButtonText}
             </button>
+            {generatedPptxUrl && onDownloadPptx && (
+              <button
+                onClick={onDownloadPptx}
+                className="flex-1 bg-blue-600 text-white rounded-lg py-3 px-4 font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+              >
+                <span className="text-xl">📊</span>
+                Download PPTX
+              </button>
+            )}
             {prompt && onDownloadPrompt && (
               <button
                 onClick={onDownloadPrompt}
