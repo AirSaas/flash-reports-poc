@@ -126,19 +126,32 @@ def _ss_get(ss: dict, *selectors) -> dict:
     return merged
 
 def _bg_color(sty: dict) -> Optional[RGBColor]:
-    """Extract background color from a style dict."""
-    return _parse_color(sty.get('background', '') or sty.get('background-color', ''))
+    """Extract background color from a style dict. Handles solid colors and linear-gradient (uses first color)."""
+    val = sty.get('background', '') or sty.get('background-color', '')
+    if not val:
+        return None
+    # Handle linear-gradient: extract first color
+    if 'gradient' in val:
+        m = re.search(r'#[0-9a-fA-F]{3,6}', val)
+        if m:
+            return _parse_color(m.group(0))
+        m = re.search(r'rgb\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*\)', val)
+        if m:
+            return _parse_color(m.group(0))
+        return None
+    return _parse_color(val)
 
 def _resolve_width(sty: dict, key: str = 'width', default: float = 0, container_w: float = SLIDE_W_PX) -> float:
     """Resolve a CSS width value (px or %) to pixels."""
     val = sty.get(key, '')
     if not val:
         return default
+    # Check % FIRST — _px("100%") would wrongly return 100
+    if '%' in val:
+        return container_w * _pct(val) / 100
     px_val = _px(val)
     if px_val > 0:
         return px_val
-    if '%' in val:
-        return container_w * _pct(val) / 100
     return default
 
 # ───────────── XML-level table cell helpers ───────────────────
@@ -291,14 +304,25 @@ def _circle_color(el) -> Optional[RGBColor]:
     return None
 
 # ───────────── detect progress bar structure ──────────────────
-def _has_progress_bar(box_el) -> bool:
-    """Check if a section-box contains progress bar divs."""
+def _has_progress_bar(box_el, depth=0) -> bool:
+    """Check if a section-box contains progress bar divs (searches up to 4 levels deep)."""
+    if depth > 4:
+        return False
     for child in box_el:
-        for inner in child:
-            if not hasattr(inner, 'tag') or inner.tag != 'div': continue
-            iss = _sty(inner)
-            if 'border-radius' in iss and 'height' in iss and _bg_color(iss):
-                return True
+        if not hasattr(child, 'tag') or child.tag != 'div':
+            continue
+        cs = _sty(child)
+        if 'border-radius' in cs and 'height' in cs and _bg_color(cs):
+            # Confirm it has an inner fill div
+            for inner in child:
+                if hasattr(inner, 'tag') and inner.tag == 'div' and _bg_color(_sty(inner)):
+                    return True
+            # Or has a span with % text (also a progress bar indicator)
+            for inner in child:
+                if hasattr(inner, 'tag') and inner.tag == 'span' and '%' in (inner.text or ''):
+                    return True
+        if _has_progress_bar(child, depth + 1):
+            return True
     return False
 
 # ═══════════════════════════════════════════════════════════════
@@ -437,7 +461,12 @@ class SlideRenderer:
                 box_els = div.cssselect('.section-box')
                 box = box_els[0] if box_els else None
 
-                # If no box as child, look for next sibling .section-box
+                # Also check for .trend-box as direct child (no .section-box wrapper)
+                if box is None:
+                    trend_els = div.cssselect('.trend-box')
+                    box = trend_els[0] if trend_els else None
+
+                # If no box as child, look for next sibling .section-box or .trend-box
                 if box is None:
                     box = self._find_sibling_box(all_children, idx, processed)
 
@@ -719,58 +748,88 @@ class SlideRenderer:
         box_top_px = _px(box_sty.get('top', ''))
         y = (box_top_px if box_top_px > 0 else top + 28)
 
-        for child in box:
-            drew_bar = False
-            for inner in child:
-                if not hasattr(inner, 'tag') or inner.tag != 'div': continue
-                iss = _sty(inner)
-                if 'border-radius' not in iss or 'height' not in iss: continue
-                inner_bg = _bg_color(iss)
-                if not inner_bg: continue
-                fill_children = [fd for fd in inner if fd.tag == 'div' and _bg_color(_sty(fd))]
-                has_span = any(sp.tag == 'span' for sp in inner)
-                if not fill_children and not has_span: continue
-                drew_bar = True
-                bar_h = _px(iss.get('height', '16'))
-                bar_w = w - 24
-                bg = self.s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE,
-                        E(left+12), E(y), E(bar_w), E(bar_h))
-                bg.fill.solid(); bg.fill.fore_color.rgb = inner_bg; bg.line.fill.background()
-                for fd in fill_children:
-                    fds = _sty(fd)
-                    fill_color = _bg_color(fds)
-                    if not fill_color: continue
-                    pct = _pct(fds.get('width','0'))
-                    fw = bar_w * pct / 100
-                    if fw > 0:
-                        fb = self.s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE,
-                                E(left+12), E(y), E(fw), E(bar_h))
-                        fb.fill.solid(); fb.fill.fore_color.rgb = fill_color; fb.line.fill.background()
-                for sp in inner:
-                    if sp.tag != 'span': continue
-                    stxt = sp.text_content().strip()
-                    if '%' in stxt:
-                        sp_sty = _sty(sp)
-                        sp_fs = _px(sp_sty.get('font-size', '11')) * 0.75 if sp_sty.get('font-size') else 8
-                        sp_color = _parse_color(sp_sty.get('color', '')) or _FALLBACK_BLACK33
-                        _textbox(self.s, left+bar_w-60, y, 72, bar_h,
-                                 stxt, size=sp_fs, color=sp_color, align=PP_ALIGN.RIGHT, font=self.font)
-                y += bar_h + 8
-            if drew_bar: continue
+        # Use cssselect to find ALL progress bar divs anywhere in the box
+        y = self._render_planning_content(box, left, y, w)
 
-            txt = child.text_content().strip()
-            if not txt or child.tag != 'div': continue
+    def _render_planning_content(self, parent, left, y, w):
+        """Recursively render planning content — labels and progress bars."""
+        for child in parent:
+            if not hasattr(child, 'tag') or child.tag != 'div':
+                continue
+            cs = _sty(child)
+            cls = child.get('class', '') or ''
 
-            has_blocks = any(c.tag in ('p', 'ul', 'div', 'table') for c in child)
-            if has_blocks:
-                tb = _textbox(self.s, left+12, y, w-24, 14, font=self.font)
-                _render_rich(tb.text_frame.paragraphs[0], child, 8, skip_blocks=True)
-                y += 16
-                y = self._render_box_content(child, left, y, w, indent=12, fs_pt=8)
+            # Check if this div IS a progress bar (has border-radius + height + bg)
+            if 'border-radius' in cs and 'height' in cs and _bg_color(cs):
+                fill_children = [fd for fd in child if hasattr(fd, 'tag') and fd.tag == 'div' and _bg_color(_sty(fd))]
+                has_span = any(hasattr(sp, 'tag') and sp.tag == 'span' for sp in child)
+                if fill_children or has_span:
+                    bar_h = _px(cs.get('height', '16'))
+                    bar_w = w - 24
+                    inner_bg = _bg_color(cs)
+                    bg = self.s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE,
+                            E(left+12), E(y), E(bar_w), E(bar_h))
+                    bg.fill.solid(); bg.fill.fore_color.rgb = inner_bg; bg.line.fill.background()
+                    for fd in fill_children:
+                        fds = _sty(fd)
+                        fill_color = _bg_color(fds)
+                        if not fill_color: continue
+                        pct = _pct(fds.get('width','0'))
+                        fw = bar_w * pct / 100
+                        if fw > 0:
+                            fb = self.s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE,
+                                    E(left+12), E(y), E(fw), E(bar_h))
+                            fb.fill.solid(); fb.fill.fore_color.rgb = fill_color; fb.line.fill.background()
+                    for sp in child:
+                        if not hasattr(sp, 'tag') or sp.tag != 'span': continue
+                        stxt = sp.text_content().strip()
+                        if '%' in stxt:
+                            sp_sty = _sty(sp)
+                            sp_fs = _px(sp_sty.get('font-size', '11')) * 0.75 if sp_sty.get('font-size') else 8
+                            sp_color = _parse_color(sp_sty.get('color', '')) or _FALLBACK_BLACK33
+                            _textbox(self.s, left+bar_w-60, y, 72, bar_h,
+                                     stxt, size=sp_fs, color=sp_color, align=PP_ALIGN.RIGHT, font=self.font)
+                    y += bar_h + 8
+                    continue
+
+            # Check if this is a label (sub-label, bullet-item, or text div)
+            if 'sub-label' in cls or 'budget-label' in cls:
+                bl_css = _ss_get(self.ss, '.budget-label', '.sub-label')
+                bl_fs = _px(cs.get('font-size', '') or bl_css.get('font-size', '12')) * 0.75
+                bl_fw = cs.get('font-weight', '') or bl_css.get('font-weight', '700')
+                bl_bold = bl_fw not in ('400', 'normal', '')
+                bl_color = _parse_color(cs.get('color', '') or bl_css.get('color', '')) or _FALLBACK_BLACK33
+                _textbox(self.s, left+12, y, w-24, 14,
+                         child.text_content().strip(), size=bl_fs, bold=bl_bold, color=bl_color, font=self.font)
+                y += 16; continue
+
+            if 'bullet-item' in cls:
+                bi_css = _ss_get(self.ss, '.bullet-item')
+                bi_before = _ss_get(self.ss, '.bullet-item::before')
+                bullet_color = _parse_color(bi_before.get('color', '')) or _FALLBACK_RED_BULL
+                fs_css = _px(cs.get('font-size', '') or bi_css.get('font-size', '11'))
+                fpt = fs_css * 0.75
+                _textbox(self.s, left+12, y, 10, 12, '\u25aa', size=7, color=bullet_color, font=self.font)
+                tb = _textbox(self.s, left+24, y, w-36, 14, font=self.font)
+                _render_rich(tb.text_frame.paragraphs[0], child, fpt)
+                y += max(14, int(fpt*1.8)) + 4; continue
+
+            # Div with child blocks — recurse
+            has_child_divs = any(hasattr(c, 'tag') and c.tag in ('div', 'p', 'ul', 'table') for c in child)
+            if has_child_divs:
+                txt_only = child.text
+                if txt_only and txt_only.strip():
+                    tb = _textbox(self.s, left+12, y, w-24, 14, font=self.font)
+                    _render_rich(tb.text_frame.paragraphs[0], child, 8, skip_blocks=True)
+                    y += 16
+                y = self._render_planning_content(child, left, y, w)
             else:
-                tb = _textbox(self.s, left+12, y, w-24, 14, font=self.font)
-                _render_rich(tb.text_frame.paragraphs[0], child, 8)
-                y += 16
+                txt = child.text_content().strip()
+                if txt:
+                    tb = _textbox(self.s, left+12, y, w-24, 14, font=self.font)
+                    _render_rich(tb.text_frame.paragraphs[0], child, 8)
+                    y += 16
+        return y
 
     # ── standalone table (summary slide) ───────────────────────
     def _standalone_table(self, div, st):
