@@ -52,6 +52,22 @@ export const LONG_TEXT_STRATEGIES = {
   },
 } as const
 
+/**
+ * @deprecated No longer used in the main flow.
+ * Projects are now fetched dynamically from AirSaas smartviews.
+ *
+ * Old flow: This hardcoded list was used as a default config
+ * New flow: User selects a smartview and projects are fetched via:
+ *   - list-smartviews edge function
+ *   - get-smartview-projects edge function
+ *
+ * This constant is kept for reference only. Can be safely deleted after 2025-03-01.
+ * Still used by deprecated ProjectsConfig.tsx component.
+ *
+ * @see SmartviewSelector.tsx for the new implementation
+ * @see supabase/functions/list-smartviews/index.ts
+ * @see supabase/functions/get-smartview-projects/index.ts
+ */
 export const AIRSAAS_PROJECTS = {
   workspace: 'aqme-corp-',
   projects: [

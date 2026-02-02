@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import type { SessionState, Engine, Step, ProjectsConfig } from '@appTypes/index'
+import type { SessionState, Engine, Step, ProjectsConfig, SmartviewSelection } from '@appTypes/index'
 import type { SessionResponse } from '@appTypes/api'
 import { getStoredSession, setStoredSession, createNewSession } from '@lib/storage'
 import { invokeFunction } from '@lib/supabase'
@@ -34,8 +34,18 @@ export function useSession() {
     setSession((prev) => ({ ...prev, hasFetchedData }))
   }, [])
 
+  /**
+   * @deprecated Use setSmartviewSelection instead
+   */
   const setProjectsConfig = useCallback((projectsConfig: ProjectsConfig) => {
     setSession((prev) => ({ ...prev, projectsConfig }))
+  }, [])
+
+  /**
+   * Set the selected smartview and its projects
+   */
+  const setSmartviewSelection = useCallback((smartviewSelection: SmartviewSelection) => {
+    setSession((prev) => ({ ...prev, smartviewSelection }))
   }, [])
 
   const resetSession = useCallback(() => {
@@ -80,7 +90,8 @@ export function useSession() {
     setLastMappingId,
     setLastFetchedDataId,
     setHasFetchedData,
-    setProjectsConfig,
+    setProjectsConfig, // @deprecated
+    setSmartviewSelection,
     resetSession,
     fetchSessionState,
     goToStep,

@@ -314,7 +314,6 @@ export function useGenerate(sessionId: string, engine: Engine | null): UseGenera
 
   /**
    * Evaluate a report using async job-based evaluation.
-   * Not applicable for Claude PPTX engine.
    */
   const evaluate = useCallback(
     async (reportId: string): Promise<EvaluateResponse | null> => {

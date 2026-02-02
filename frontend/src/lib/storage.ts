@@ -1,5 +1,5 @@
 import { STORAGE_KEYS } from '@config/constants'
-import type { SessionState, Engine } from '@appTypes/index'
+import type { SessionState, Engine, SmartviewSelection } from '@appTypes/index'
 
 const DEFAULT_SESSION_STATE: SessionState = {
   sessionId: crypto.randomUUID(),
@@ -8,14 +8,21 @@ const DEFAULT_SESSION_STATE: SessionState = {
   lastMappingId: null,
   lastFetchedDataId: null,
   hasFetchedData: false,
-  projectsConfig: null,
+  projectsConfig: null, // @deprecated - kept for backward compatibility
+  smartviewSelection: null,
 }
 
 export function getStoredSession(): SessionState {
   try {
     const stored = localStorage.getItem(STORAGE_KEYS.SESSION)
     if (stored) {
-      return JSON.parse(stored)
+      const parsed = JSON.parse(stored)
+      // Ensure new fields exist for backward compatibility
+      return {
+        ...DEFAULT_SESSION_STATE,
+        ...parsed,
+        smartviewSelection: parsed.smartviewSelection || null,
+      }
     }
   } catch (e) {
     console.error('Failed to parse stored session:', e)
@@ -42,7 +49,7 @@ export function clearStoredSession(): void {
 }
 
 export function createNewSession(): SessionState {
-  // Preserve projectsConfig, lastTemplateId, lastMappingId and lastFetchedDataId when creating new session
+  // Preserve smartviewSelection, lastTemplateId, lastMappingId and lastFetchedDataId when creating new session
   const existingSession = getStoredSession()
   const newSession: SessionState = {
     sessionId: crypto.randomUUID(),
@@ -51,7 +58,8 @@ export function createNewSession(): SessionState {
     lastMappingId: existingSession.lastMappingId, // Keep existing mapping reference
     lastFetchedDataId: existingSession.lastFetchedDataId, // Keep existing fetched data reference
     hasFetchedData: false,
-    projectsConfig: existingSession.projectsConfig, // Keep existing config
+    projectsConfig: null, // @deprecated - no longer preserve
+    smartviewSelection: existingSession.smartviewSelection, // Keep existing smartview selection
   }
   setStoredSession(newSession)
   return newSession
@@ -65,4 +73,9 @@ export function updateStoredMappingId(mappingId: string): void {
 export function updateStoredFetchedDataFlag(hasFetchedData: boolean): void {
   const session = getStoredSession()
   setStoredSession({ ...session, hasFetchedData })
+}
+
+export function updateStoredSmartviewSelection(selection: SmartviewSelection): void {
+  const session = getStoredSession()
+  setStoredSession({ ...session, smartviewSelection: selection })
 }

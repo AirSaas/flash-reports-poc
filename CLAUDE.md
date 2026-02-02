@@ -70,6 +70,8 @@ flash-reports/
 │   │   ├── evaluate-report/    # Evaluates generated report quality
 │   │   ├── fetch-projects/     # Fetches data from AirSaas API
 │   │   ├── generate-claude-pptx/ # Creates job for PPTX generation
+│   │   ├── get-smartview-projects/ # Gets projects from a smartview
+│   │   ├── list-smartviews/    # Lists available AirSaas smartviews
 │   │   ├── get-session/        # Gets/updates session state
 │   │   ├── mapping-question/   # Gets next mapping question
 │   │   ├── process-pptx-job/   # Actual PPTX generation with Claude
@@ -78,6 +80,23 @@ flash-reports/
 ```
 
 ## Data Flow
+
+### Smartview-Based Project Selection
+
+Projects are now selected via AirSaas smartviews instead of manual JSON configuration:
+
+```
+┌─────────────┐     ┌──────────────────┐     ┌─────────────────────────────┐
+│  AirSaas    │────▶│  list-smartviews │────▶│ Frontend: SmartviewSelector │
+│ Smartviews  │     │                  │     │ (user selects a smartview)  │
+└─────────────┘     └──────────────────┘     └─────────────────────────────┘
+                                                          │
+                                                          ▼
+┌─────────────┐     ┌──────────────────┐     ┌─────────────────────────────┐
+│  AirSaas    │────▶│ get-smartview-   │────▶│ Shows project list preview  │
+│  Projects   │     │    projects      │     │ (from selected smartview)   │
+└─────────────┘     └──────────────────┘     └─────────────────────────────┘
+```
 
 ### Single Source of Truth
 
@@ -88,7 +107,7 @@ This simplifies the architecture and prevents data synchronization issues.
 ```
 ┌─────────────┐     ┌──────────────────┐     ┌─────────────────────────────┐
 │  AirSaas    │────▶│  fetch-projects  │────▶│ sessions.fetched_projects_  │
-│    API      │     │                  │     │           data              │
+│    API      │     │ (smartviewConfig)│     │           data              │
 └─────────────┘     └──────────────────┘     └─────────────────────────────┘
                                                           │
                                                           ▼
@@ -150,8 +169,8 @@ This simplifies the architecture and prevents data synchronization issues.
 └────────┬─────────┘
          ▼
 ┌──────────────────┐
-│ Configure        │  User selects workspace + projects
-│ Projects         │
+│ Select Smartview │  User selects a smartview from AirSaas
+│                  │  (replaces manual JSON configuration)
 └────────┬─────────┘
          ▼
 ┌──────────────────┐
@@ -298,11 +317,42 @@ Polling endpoint to check job progress.
 **Input**: `{ jobId: "uuid" }`
 **Output**: `{ success: true, job: { id, status, result, error, ... } }`
 
-### `fetch-projects`
-Downloads project data from AirSaas API and stores in session.
+### `list-smartviews`
+Lists all available project-type smartviews from AirSaas.
 
-**Input**: `projectsConfig` with workspace and project list
+**Input**: None (uses `AIRSAAS_API_KEY` from environment)
+**Output**: `{ success: true, smartviews: [...], total: number }`
+
+**Process**:
+1. Calls AirSaas `/v1/smartviews/?type=project` with pagination
+2. Collects all smartviews across pages
+3. Returns sorted by name
+
+### `get-smartview-projects`
+Gets the list of projects contained in a smartview.
+
+**Input**: `{ smartviewId: "uuid" }`
+**Output**: `{ success: true, projects: [{ id, name, short_id }], total: number }`
+
+**Process**:
+1. Calls AirSaas `/v1/smartviews/{id}/item_ids/` to get project IDs
+2. Fetches basic info (name, short_id) for each project in batches
+3. Returns project list for display in frontend
+
+### `fetch-projects`
+Downloads full project data from AirSaas API and stores in session.
+
+**Input**: `smartviewConfig` with smartview info and project list (or legacy `projectsConfig`)
 **Output**: Saves to `sessions.fetched_projects_data`
+
+**Supported Formats**:
+```typescript
+// New format (preferred)
+{ smartviewConfig: { smartview_id, smartview_name, projects: [...] } }
+
+// Legacy format (deprecated)
+{ projectsConfig: { workspace, projects: [...] } }
+```
 
 ### `copy-mapping`
 Copies mapping configuration AND project data from a previous session.
@@ -421,7 +471,8 @@ Session state is persisted to localStorage via `storage.ts`:
 - `lastMappingId` - Last mapping ID for reuse
 - `lastFetchedDataId` - Last session ID with fetched data
 - `hasFetchedData` - Whether current session has data
-- `projectsConfig` - Selected projects configuration
+- `smartviewSelection` - Selected smartview and its projects
+- `projectsConfig` - **@deprecated** (kept for backward compatibility)
 
 ### Key Hooks
 
@@ -470,6 +521,8 @@ npx supabase functions deploy process-pptx-job --project-ref wlvpwlygitzhrkrvrfw
 npx supabase functions deploy check-job-status --project-ref wlvpwlygitzhrkrvrfwj --use-api --no-verify-jwt
 npx supabase functions deploy copy-mapping --project-ref wlvpwlygitzhrkrvrfwj --use-api --no-verify-jwt
 npx supabase functions deploy fetch-projects --project-ref wlvpwlygitzhrkrvrfwj --use-api --no-verify-jwt
+npx supabase functions deploy list-smartviews --project-ref wlvpwlygitzhrkrvrfwj --use-api --no-verify-jwt
+npx supabase functions deploy get-smartview-projects --project-ref wlvpwlygitzhrkrvrfwj --use-api --no-verify-jwt
 ```
 
 Note: `--use-api` is required because Docker is not available locally.
@@ -618,6 +671,33 @@ ALTER TABLE mappings DROP COLUMN IF EXISTS fetched_data;
 ALTER TABLE generation_jobs DROP COLUMN IF EXISTS updated_at;
 ```
 
+## Deprecated Code
+
+The following code is deprecated and kept only for backward compatibility. Can be safely deleted after 2025-03-01.
+
+### Frontend Components
+- **`ProjectsConfig.tsx`** - Replaced by `SmartviewSelector.tsx`
+  - Old flow: User pastes JSON with workspace + projects array
+  - New flow: User selects a smartview from AirSaas, projects are fetched automatically
+
+### Frontend Constants
+- **`AIRSAAS_PROJECTS`** in `config/constants.ts` - No longer used
+  - Was: Hardcoded default project list for the JSON input
+  - Now: Projects are fetched dynamically from smartviews
+
+### Frontend Services
+- **`fetchProjects()`** in `session.service.ts` - Use `fetchProjectsFromSmartview()` instead
+  - Accepts legacy `projectsConfig` format
+  - New function accepts `smartviewConfig` format
+
+### Types
+- **`ProjectsConfig`** interface in `session.service.ts` - Use `SmartviewConfig` instead
+- **`projectsConfig`** field in `SessionState` - Use `smartviewSelection` instead
+
+### Edge Functions
+- **`fetch-projects`** still accepts legacy `projectsConfig` format for backward compatibility
+  - Prefer sending `smartviewConfig` format
+
 ## Future Improvements
 
 1. **Streaming progress** - Use Supabase Realtime to stream job progress instead of polling
@@ -625,3 +705,4 @@ ALTER TABLE generation_jobs DROP COLUMN IF EXISTS updated_at;
 3. **Queue management** - Limit concurrent jobs per user
 4. **Caching** - Cache AirSaas responses to reduce API calls
 5. **Webhook triggers** - Use database webhooks instead of client-triggered processing
+6. **New AirSaas endpoints** - Integrate `last_weather_update` and `last_status_update` for richer data

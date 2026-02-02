@@ -1,14 +1,14 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import type { Step, LongTextStrategy, ProjectsConfig as ProjectsConfigType } from '@appTypes/index'
+import type { Step, LongTextStrategy, SmartviewSelection } from '@appTypes/index'
 import { useSession } from '@hooks/useSession'
 import { useMapping } from '@hooks/useMapping'
 import { useUpload } from '@hooks/useUpload'
 import { useGenerate } from '@hooks/useGenerate'
-import { updateLongTextStrategy, copyMapping, copyFetchedData, getFetchedDataInfo, fetchProjects } from '@services/session.service'
+import { updateLongTextStrategy, copyMapping, copyFetchedData, getFetchedDataInfo, fetchProjectsFromSmartview } from '@services/session.service'
 import { supabase } from '@lib/supabase'
 import { Header, Sidebar } from '@ui/layout'
 import { EngineSelector } from '@ui/engine'
-import { ProjectsConfig } from '@ui/projects'
+import { SmartviewSelector } from '@ui/projects'
 import { TemplateUpload, TemplatePreview, UseLastTemplate } from '@ui/template'
 import { UseLastMapping, UseLastFetchedData, MappingQuestion, BatchMappingEditor, SlideSelector } from '@ui/mapping'
 import { LongTextOptions } from '@ui/options'
@@ -56,14 +56,14 @@ export function Home() {
     lastMappingId,
     lastFetchedDataId,
     hasFetchedData,
-    projectsConfig,
+    smartviewSelection,
     currentStep,
     setEngine,
     setLastTemplateId,
     setLastMappingId,
     setLastFetchedDataId,
     setHasFetchedData,
-    setProjectsConfig,
+    setSmartviewSelection,
     resetSession,
     goToStep,
   } = useSession()
@@ -140,19 +140,19 @@ export function Home() {
     [setEngine, markStepComplete, goToStep]
   )
 
-  const handleProjectsSave = useCallback(
-    (config: ProjectsConfigType) => {
-      setProjectsConfig(config)
+  const handleSmartviewSelect = useCallback(
+    (selection: SmartviewSelection) => {
+      setSmartviewSelection(selection)
     },
-    [setProjectsConfig]
+    [setSmartviewSelection]
   )
 
-  const handleProjectsContinue = useCallback(() => {
-    if (projectsConfig && projectsConfig.projects.length > 0) {
+  const handleSmartviewContinue = useCallback(() => {
+    if (smartviewSelection && smartviewSelection.projects.length > 0) {
       markStepComplete('configure_projects')
       goToStep('upload_template')
     }
-  }, [projectsConfig, markStepComplete, goToStep])
+  }, [smartviewSelection, markStepComplete, goToStep])
 
   const handleTemplateUpload = useCallback(
     async (file: File) => {
@@ -321,14 +321,18 @@ export function Home() {
         goToStep('generating')
 
         // Debug: log the state
-        console.log('handleContinueToGeneration:', { hasFetchedData, hasProjectsConfig: !!projectsConfig })
+        console.log('handleContinueToGeneration:', { hasFetchedData, hasSmartviewSelection: !!smartviewSelection })
 
         // If we don't have fetched data yet, fetch it now before generating
         if (!hasFetchedData) {
-          if (projectsConfig && projectsConfig.projects.length > 0) {
+          if (smartviewSelection && smartviewSelection.projects.length > 0) {
             console.log('No fetched data - fetching projects before generation...')
             try {
-              const fetchResult = await fetchProjects(sessionId, projectsConfig)
+              const fetchResult = await fetchProjectsFromSmartview(sessionId, {
+                smartview_id: smartviewSelection.smartview.id,
+                smartview_name: smartviewSelection.smartview.name,
+                projects: smartviewSelection.projects,
+              })
               if (fetchResult.success) {
                 setHasFetchedData(true)
                 console.log(`Fetched ${fetchResult.projectCount} projects - waiting for data propagation...`)
@@ -344,7 +348,7 @@ export function Home() {
               return
             }
           } else {
-            console.warn('No fetched data AND no projectsConfig - generation will likely fail')
+            console.warn('No fetched data AND no smartviewSelection - generation will likely fail')
             return
           }
         }
@@ -358,7 +362,7 @@ export function Home() {
         setStartingGeneration(false)
       }
     }
-  }, [sessionId, longTextStrategy, markStepComplete, goToStep, generateWithEvaluation, hasFetchedData, projectsConfig, setHasFetchedData])
+  }, [sessionId, longTextStrategy, markStepComplete, goToStep, generateWithEvaluation, hasFetchedData, smartviewSelection, setHasFetchedData])
 
   const handleRegenerate = useCallback(async () => {
     goToStep('generating')
@@ -423,15 +427,21 @@ export function Home() {
   // Auto-trigger mapping process when entering mapping step
   useEffect(() => {
     const startProcess = async () => {
-      if (currentStep === 'mapping' && templatePath && projectsConfig && !analysisStarted && !analyzing) {
+      if (currentStep === 'mapping' && templatePath && smartviewSelection && !analysisStarted && !analyzing) {
         setAnalysisStarted(true)
         // Skip fetching projects if we're using cached data
         // Use batch mapping process (new UX)
-        await startBatchMappingProcess(templatePath, projectsConfig, { skipFetchProjects: useCachedData })
+        // Use the new SmartviewConfig format with only selected projects
+        const smartviewConfigForMapping = {
+          smartview_id: smartviewSelection.smartview.id,
+          smartview_name: smartviewSelection.smartview.name,
+          projects: smartviewSelection.projects, // Only the selected projects
+        }
+        await startBatchMappingProcess(templatePath, smartviewConfigForMapping, { skipFetchProjects: useCachedData })
       }
     }
     startProcess()
-  }, [currentStep, templatePath, projectsConfig, analysisStarted, analyzing, startBatchMappingProcess, useCachedData])
+  }, [currentStep, templatePath, smartviewSelection, analysisStarted, analyzing, startBatchMappingProcess, useCachedData])
 
   // Save lastFetchedDataId immediately when fetch completes (before analyze-template)
   // This ensures data is saved for reuse even if subsequent steps fail
@@ -462,10 +472,10 @@ export function Home() {
 
       case 'configure_projects':
         return (
-          <ProjectsConfig
-            config={projectsConfig}
-            onSave={handleProjectsSave}
-            onContinue={handleProjectsContinue}
+          <SmartviewSelector
+            selection={smartviewSelection}
+            onSelect={handleSmartviewSelect}
+            onContinue={handleSmartviewContinue}
           />
         )
 

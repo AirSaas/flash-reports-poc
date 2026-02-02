@@ -1,3 +1,15 @@
+/**
+ * @deprecated This component is no longer used in the main flow.
+ * Replaced by SmartviewSelector.tsx which fetches projects from AirSaas smartviews.
+ *
+ * Old flow: User pastes JSON with workspace + projects array
+ * New flow: User selects a smartview from AirSaas, projects are fetched automatically
+ *
+ * This file is kept for reference only. Can be safely deleted after 2025-03-01.
+ *
+ * @see SmartviewSelector.tsx for the new implementation
+ */
+
 import { useState, useCallback, useEffect } from 'react'
 import { cn } from '@lib/utils'
 import { AIRSAAS_PROJECTS } from '@config/constants'

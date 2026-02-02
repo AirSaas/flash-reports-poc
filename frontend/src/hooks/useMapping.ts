@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react'
 import { invokeFunction } from '@lib/supabase'
 import { listTemplateSlides, type SlideInfo } from '@services/python-backend.service'
-import type { ProjectsConfig } from '@appTypes/index'
+import type { ProjectsConfig, SmartviewConfig } from '@appTypes/index'
 
 interface MappingOption {
   id: string
@@ -132,16 +132,23 @@ export function useMapping(sessionId: string) {
   const [batchAllOptions, setBatchAllOptions] = useState<MappingOption[]>([])
   const [batchLoading, setBatchLoading] = useState(false)
 
-  const fetchProjectsData = useCallback(async (projectsConfig: ProjectsConfig) => {
+  const fetchProjectsData = useCallback(async (config: ProjectsConfig | SmartviewConfig) => {
+    const projectCount = config.projects.length
     setProgressStep('fetching_projects')
-    setProgressMessage(`Downloading data for ${projectsConfig.projects.length} projects from AirSaas...`)
+    setProgressMessage(`Downloading data for ${projectCount} projects from AirSaas...`)
     setError(null)
 
     try {
+      // Determine if this is a smartview config or legacy config
+      const isSmartviewConfig = 'smartview_id' in config
+      const body = isSmartviewConfig
+        ? { smartviewConfig: config as SmartviewConfig }
+        : { projectsConfig: config as ProjectsConfig }
+
       const response = await invokeFunction<FetchProjectsResponse>(
         'fetch-projects',
         sessionId,
-        { projectsConfig }
+        body
       )
 
       if (response.success) {
@@ -369,12 +376,12 @@ export function useMapping(sessionId: string) {
 
   const startBatchMappingProcess = useCallback(async (
     _templatePath: string,
-    projectsConfig: ProjectsConfig,
+    config: ProjectsConfig | SmartviewConfig,
     options?: { skipFetchProjects?: boolean }
   ) => {
     // Step 1: Fetch projects data (skip if already cached)
     if (!options?.skipFetchProjects) {
-      const fetchSuccess = await fetchProjectsData(projectsConfig)
+      const fetchSuccess = await fetchProjectsData(config)
       if (!fetchSuccess) return null
     } else {
       setProgressMessage('Using cached project data...')

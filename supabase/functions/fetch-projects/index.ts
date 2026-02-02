@@ -9,9 +9,28 @@ interface ProjectItem {
   short_id?: string
 }
 
-interface ProjectsConfig {
+/**
+ * @deprecated Legacy format - use smartview format instead
+ */
+interface LegacyProjectsConfig {
   workspace: string
   projects: ProjectItem[]
+}
+
+/**
+ * New smartview-based format
+ */
+interface SmartviewConfig {
+  smartview_id: string
+  smartview_name: string
+  projects: ProjectItem[]
+}
+
+type RequestBody = {
+  // New format: smartview-based
+  smartviewConfig?: SmartviewConfig
+  // Legacy format: manual JSON config (deprecated)
+  projectsConfig?: LegacyProjectsConfig
 }
 
 serve(async (req) => {
@@ -20,23 +39,41 @@ serve(async (req) => {
 
   try {
     const sessionId = getSessionId(req)
-    const { projectsConfig } = await req.json() as { projectsConfig: ProjectsConfig }
+    const body: RequestBody = await req.json()
 
-    if (!projectsConfig || !projectsConfig.projects || projectsConfig.projects.length === 0) {
-      throw new Error('projectsConfig with projects array is required')
+    // Support both new smartview format and legacy format
+    let projects: ProjectItem[] = []
+    let sourceIdentifier: string = 'unknown'
+
+    if (body.smartviewConfig) {
+      // New smartview-based format
+      projects = body.smartviewConfig.projects
+      sourceIdentifier = `smartview:${body.smartviewConfig.smartview_name}`
+      console.log(`Using smartview config: ${body.smartviewConfig.smartview_name} (${body.smartviewConfig.smartview_id})`)
+    } else if (body.projectsConfig) {
+      // Legacy format (deprecated but still supported)
+      console.warn('Using deprecated projectsConfig format. Please migrate to smartviewConfig.')
+      projects = body.projectsConfig.projects
+      sourceIdentifier = `workspace:${body.projectsConfig.workspace}`
+    } else {
+      throw new Error('Either smartviewConfig or projectsConfig is required')
+    }
+
+    if (!projects || projects.length === 0) {
+      throw new Error('No projects provided')
     }
 
     const supabase = getSupabaseClient()
 
-    console.log(`Fetching data for ${projectsConfig.projects.length} projects...`)
+    console.log(`Fetching data for ${projects.length} projects...`)
 
     const allProjectsData: Record<string, unknown>[] = []
     const errors: Array<{ projectId: string; error: string }> = []
 
     // Fetch data for each project
-    for (let i = 0; i < projectsConfig.projects.length; i++) {
-      const project = projectsConfig.projects[i]
-      console.log(`[${i + 1}/${projectsConfig.projects.length}] Fetching project: ${project.name} (${project.id})`)
+    for (let i = 0; i < projects.length; i++) {
+      const project = projects[i]
+      console.log(`[${i + 1}/${projects.length}] Fetching project: ${project.name} (${project.id})`)
 
       try {
         const projectData = await fetchAirSaasProjectData(project.id)
@@ -70,12 +107,23 @@ serve(async (req) => {
     const compressedData = compressProjectData(allProjectsData)
 
     // Build final structure
-    const fetchedData = {
+    const fetchedData: Record<string, unknown> = {
       fetched_at: new Date().toISOString(),
-      workspace: projectsConfig.workspace,
-      project_count: projectsConfig.projects.length,
-      successful_count: projectsConfig.projects.length - errors.length,
+      source: sourceIdentifier,
+      project_count: projects.length,
+      successful_count: projects.length - errors.length,
       projects: compressedData,
+    }
+
+    // Add smartview info if using new format
+    if (body.smartviewConfig) {
+      fetchedData.smartview_id = body.smartviewConfig.smartview_id
+      fetchedData.smartview_name = body.smartviewConfig.smartview_name
+    }
+
+    // Legacy: keep workspace for backward compatibility
+    if (body.projectsConfig?.workspace) {
+      fetchedData.workspace = body.projectsConfig.workspace
     }
 
     // Save to session (upsert to create if not exists)
@@ -87,13 +135,13 @@ serve(async (req) => {
         updated_at: new Date().toISOString(),
       }, { onConflict: 'id' })
 
-    console.log(`Fetched ${projectsConfig.projects.length - errors.length}/${projectsConfig.projects.length} projects successfully`)
+    console.log(`Fetched ${projects.length - errors.length}/${projects.length} projects successfully`)
 
     return new Response(
       JSON.stringify({
         success: true,
-        projectCount: projectsConfig.projects.length,
-        successfulCount: projectsConfig.projects.length - errors.length,
+        projectCount: projects.length,
+        successfulCount: projects.length - errors.length,
         errors: errors.length > 0 ? errors : undefined,
       }),
       {

@@ -110,11 +110,23 @@ interface ProjectItem {
   short_id?: string
 }
 
+/**
+ * @deprecated Use SmartviewConfig instead
+ */
 interface ProjectsConfig {
   workspace: string
   projects: ProjectItem[]
 }
 
+interface SmartviewConfig {
+  smartview_id: string
+  smartview_name: string
+  projects: ProjectItem[]
+}
+
+/**
+ * @deprecated Use fetchProjectsFromSmartview instead
+ */
 export async function fetchProjects(
   sessionId: string,
   projectsConfig: ProjectsConfig
@@ -127,6 +139,32 @@ export async function fetchProjects(
       'x-session-id': sessionId,
     },
     body: JSON.stringify({ projectsConfig }),
+  })
+
+  const data = await response.json()
+
+  if (!response.ok || !data.success) {
+    return { success: false, error: data.error || 'Failed to fetch projects' }
+  }
+
+  return { success: true, projectCount: data.successfulCount }
+}
+
+/**
+ * Fetch projects data from AirSaas using smartview selection
+ */
+export async function fetchProjectsFromSmartview(
+  sessionId: string,
+  smartviewConfig: SmartviewConfig
+): Promise<{ success: boolean; projectCount?: number; error?: string }> {
+  const response = await fetch(`${SUPABASE_URL}/functions/v1/fetch-projects`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      'x-session-id': sessionId,
+    },
+    body: JSON.stringify({ smartviewConfig }),
   })
 
   const data = await response.json()
