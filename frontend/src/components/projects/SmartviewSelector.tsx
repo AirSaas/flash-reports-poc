@@ -79,11 +79,6 @@ export function SmartviewSelector({
     )
   }, [allProjects, projectSearchQuery])
 
-  // Get selected projects
-  const selectedProjects = useMemo(() => {
-    return allProjects.filter((p) => selectedProjectIds.has(p.id))
-  }, [allProjects, selectedProjectIds])
-
   // Handle smartview selection
   const handleSmartviewClick = useCallback(
     async (smartview: Smartview) => {
