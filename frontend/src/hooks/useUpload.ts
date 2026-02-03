@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react'
 import { supabase } from '@lib/supabase'
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from '@config/constants'
+import { startTemplatePreparation } from '@services/template-preparation.service'
 
 interface UseUploadReturn {
   uploading: boolean
@@ -64,6 +65,27 @@ export function useUpload(sessionId: string): UseUploadReturn {
         }
 
         setProgress(100)
+
+        // Reset preparation status before starting new preparation
+        await supabase
+          .from('sessions')
+          .update({
+            template_preparation_status: 'pending',
+            html_template_url: null,
+            template_png_urls: null,
+            template_pdf_url: null,
+            template_preparation_error: null,
+          })
+          .eq('id', sessionId)
+
+        // Start template preparation in background (PPTX → HTML conversion)
+        // This runs asynchronously while the user continues with other steps
+        startTemplatePreparation(sessionId).catch((err) => {
+          console.warn('Failed to start template preparation:', err)
+          // Don't fail the upload if preparation fails to start
+          // The preparation will be retried when entering the mapping step
+        })
+
         return storagePath
       } catch (e) {
         const message = e instanceof Error ? e.message : 'Upload failed'

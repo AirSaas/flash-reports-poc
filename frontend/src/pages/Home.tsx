@@ -4,7 +4,9 @@ import { useSession } from '@hooks/useSession'
 import { useMapping } from '@hooks/useMapping'
 import { useUpload } from '@hooks/useUpload'
 import { useGenerate } from '@hooks/useGenerate'
+import { useTemplatePreparation } from '@hooks/useTemplatePreparation'
 import { updateLongTextStrategy, copyMapping, copyFetchedData, getFetchedDataInfo, fetchProjectsFromSmartview } from '@services/session.service'
+import { startTemplatePreparation } from '@services/template-preparation.service'
 import { supabase } from '@lib/supabase'
 import { Header, Sidebar } from '@ui/layout'
 import { EngineSelector } from '@ui/engine'
@@ -96,6 +98,10 @@ export function Home() {
     progress: uploadProgress,
     uploadTemplate,
   } = useUpload(sessionId)
+
+  // Template preparation status (for debugging/monitoring)
+  // The actual waiting happens inside useMapping.fetchSlideList
+  const { status: templatePrepStatus } = useTemplatePreparation(sessionId)
 
   const {
     generating,
@@ -277,10 +283,25 @@ export function Home() {
   const handleUseLastTemplate = useCallback(async () => {
     if (lastTemplateId) {
       setTemplatePath(lastTemplateId)
-      // Save template_path to session in DB so backend can access it
+      // Save template_path to session in DB and reset preparation status
+      // (the status might be from a previous session)
       await supabase
         .from('sessions')
-        .upsert({ id: sessionId, template_path: lastTemplateId }, { onConflict: 'id' })
+        .upsert({
+          id: sessionId,
+          template_path: lastTemplateId,
+          template_preparation_status: 'pending',
+          html_template_url: null,
+          template_png_urls: null,
+          template_pdf_url: null,
+          template_preparation_error: null,
+        }, { onConflict: 'id' })
+
+      // Start template preparation in background (PPTX → HTML conversion)
+      // This runs asynchronously while the user continues with other steps
+      startTemplatePreparation(sessionId).catch((err) => {
+        console.warn('Failed to start template preparation:', err)
+      })
     }
   }, [lastTemplateId, sessionId])
 
@@ -537,16 +558,18 @@ export function Home() {
       case 'mapping':
         // Show detailed progress during analysis
         if (analyzing) {
-          // Adjust steps based on whether we're using cached data
+          // Steps for the mapping process
           const steps = useCachedData
             ? [
                 { key: 'fetching_projects', label: 'Using cached project data', icon: '✓', skipped: true },
+                { key: 'preparing_template', label: 'Preparing template', icon: '🔄' },
                 { key: 'listing_slides', label: 'Reading template slides', icon: '📄' },
                 { key: 'analyzing_template', label: 'Analyzing template with AI', icon: '🔍' },
                 { key: 'loading_batch', label: 'Generating mapping suggestions', icon: '📋' },
               ]
             : [
                 { key: 'fetching_projects', label: 'Downloading projects data from AirSaas', icon: '📥' },
+                { key: 'preparing_template', label: 'Preparing template', icon: '🔄' },
                 { key: 'listing_slides', label: 'Reading template slides', icon: '📄' },
                 { key: 'analyzing_template', label: 'Analyzing template with AI', icon: '🔍' },
                 { key: 'loading_batch', label: 'Generating mapping suggestions', icon: '📋' },

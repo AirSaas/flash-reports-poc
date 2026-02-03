@@ -132,6 +132,11 @@ This simplifies the architecture and prevents data synchronization issues.
     "projects": [{ ... }, { ... }]
   }
   ```
+- `html_template_url` (text) - URL to pre-generated HTML template (for optimized analysis)
+- `template_png_urls` (JSONB) - Array of URLs to PNG images of each slide
+- `template_pdf_url` (text) - URL to PDF version of template
+- `template_preparation_status` (text) - 'pending' | 'processing' | 'completed' | 'failed'
+- `template_preparation_error` (text) - Error message if preparation failed
 - `created_at`, `updated_at` (timestamps)
 
 #### `mappings`
@@ -225,6 +230,100 @@ Uses Claude Vision to convert PPTX templates to HTML, then populates with projec
 ```
 PPTX Template → PDF → PNG slides → Claude Vision → HTML Template → Data Population → HTML/PDF
 ```
+
+## Background Template Preparation (Optimization)
+
+To improve UX, the PPTX → HTML conversion runs in the background immediately after template upload. This allows users to continue with other steps while the conversion happens.
+
+### Architecture
+
+```
+Frontend                              Python Backend
+   │
+   ├──► Upload Template ─────────────► Template stored in Supabase Storage
+   │         │
+   │         ▼
+   ├──► POST /prepare-template ──────► Background task starts:
+   │    (fire-and-forget)              - Download PPTX from Storage
+   │                                   - Convert PPTX → PDF → PNG
+   │                                   - Send PNGs to Claude Vision
+   │                                   - Generate HTML template
+   │                                   - Store HTML, PNGs in Storage
+   │                                   - Update session status
+   │
+   │    [User continues with other steps]
+   │
+   └──► POST /template-preparation-status ◄──► Check status (polling)
+```
+
+### Database Fields
+
+```sql
+-- In sessions table
+html_template_url TEXT,              -- URL to generated HTML
+template_png_urls JSONB,             -- Array of PNG URLs
+template_pdf_url TEXT,               -- URL to PDF
+template_preparation_status TEXT,    -- pending/processing/completed/failed
+template_preparation_error TEXT      -- Error message if failed
+```
+
+### Python Backend Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/prepare-template` | POST | Start background PPTX → HTML conversion |
+| `/template-preparation-status` | POST | Check preparation status |
+| `/list-slides-from-html` | POST | List slides from pre-generated HTML |
+
+### Frontend Integration
+
+```typescript
+// useUpload.ts - Trigger preparation after upload
+const path = await uploadTemplate(file)
+startTemplatePreparation(sessionId).catch(console.warn)
+
+// useTemplatePreparation.ts - Poll status
+const { status, isReady, isProcessing, error } = useTemplatePreparation(sessionId)
+
+// useMapping.ts - Use HTML if available
+if (prepStatus.status === 'completed') {
+  response = await listSlidesFromHtml(sessionId)  // Fast: parses HTML
+} else {
+  response = await listTemplateSlides(sessionId)  // Slow: parses PPTX
+}
+```
+
+### Edge Function: analyze-template
+
+The `analyze-template` function now has two paths:
+
+1. **Optimized path** (HTML available): Reads HTML from Storage, sends text to Claude (no code execution)
+2. **Legacy path** (HTML not available): Uploads PPTX to Anthropic, uses code execution
+
+```typescript
+// Check if HTML is ready
+if (htmlTemplateUrl && preparationStatus === 'completed') {
+  // Use HTML - faster, no code execution needed
+  const response = await client.messages.create({
+    model: "claude-sonnet-4-5-20250929",
+    messages: [{ role: 'user', content: `Analyze this HTML...\n${htmlContent}` }],
+    tools: [{ name: "submit_analysis", input_schema: ANALYSIS_SCHEMA }]
+  })
+} else {
+  // Fall back to PPTX with code execution
+  const response = await client.beta.messages.create({
+    betas: ["code-execution-2025-08-25", "files-api-2025-04-14"],
+    // ... upload PPTX and analyze with python-pptx
+  })
+}
+```
+
+### Benefits
+
+1. **No blocking wait**: User continues while conversion happens
+2. **Faster analysis**: HTML analysis is ~10x faster than PPTX code execution
+3. **Reusable HTML**: Same HTML can be used for listing slides and final generation
+4. **Graceful fallback**: If preparation fails, falls back to legacy PPTX path
 
 ## PPTX Generation Architecture (Job-Based Polling)
 
@@ -396,8 +495,12 @@ Frontend                              Python Backend
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/generate-html` | POST | Create HTML generation job |
+| `/generate-html` | POST | Create HTML generation job (uses cached HTML if available) |
 | `/job-status` | POST | Check job status |
+| `/prepare-template` | POST | Start background PPTX → HTML conversion |
+| `/template-preparation-status` | POST | Check template preparation status |
+| `/list-slides` | POST | List slides from PPTX (legacy) |
+| `/list-slides-from-html` | POST | List slides from pre-generated HTML (optimized) |
 | `/analyze-template` | POST | Analyze PPTX and generate HTML template |
 | `/generate-direct` | POST | Synchronous generation (testing only) |
 | `/health` | GET | Health check |
@@ -480,6 +583,7 @@ Session state is persisted to localStorage via `storage.ts`:
 - `useMapping` - Handles the mapping Q&A flow
 - `useGenerate` - Manages report generation with polling
 - `useUpload` - Handles template file uploads
+- `useTemplatePreparation` - Tracks background PPTX → HTML conversion status
 
 ### Polling in useGenerate
 
@@ -669,6 +773,22 @@ CREATE INDEX IF NOT EXISTS idx_generation_jobs_status ON generation_jobs(status)
 -- - generation_jobs.updated_at: Never used
 ALTER TABLE mappings DROP COLUMN IF EXISTS fetched_data;
 ALTER TABLE generation_jobs DROP COLUMN IF EXISTS updated_at;
+```
+
+### Template preparation fields (20250202000001)
+```sql
+-- Add fields for background PPTX → HTML conversion
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS html_template_url TEXT;
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS template_png_urls JSONB;
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS template_pdf_url TEXT;
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS template_preparation_status TEXT
+  DEFAULT 'pending'
+  CHECK (template_preparation_status IN ('pending', 'processing', 'completed', 'failed'));
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS template_preparation_error TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_sessions_template_preparation_status
+  ON sessions(template_preparation_status)
+  WHERE template_preparation_status = 'processing';
 ```
 
 ## Deprecated Code
