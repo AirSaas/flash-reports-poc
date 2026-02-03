@@ -175,9 +175,33 @@ export function useMapping(sessionId: string) {
     const startTime = Date.now()
 
     setProgressStep('preparing_template')
+    setProgressMessage('Checking template status...')
+
+    // First check - might already be completed (reused from previous session)
+    try {
+      const initialStatus = await getTemplatePreparationStatus(sessionId)
+
+      if (initialStatus.status === 'completed') {
+        setProgressMessage('Template ready!')
+        return 'completed'
+      }
+
+      if (initialStatus.status === 'failed') {
+        console.warn('Template preparation failed:', initialStatus.error)
+        setProgressMessage('Using alternative analysis method...')
+        return 'failed'
+      }
+    } catch (err) {
+      console.warn('Error checking initial preparation status:', err)
+    }
+
+    // Need to wait for preparation to complete
     setProgressMessage('Analyzing your template...')
 
     while (Date.now() - startTime < MAX_WAIT_MS) {
+      // Wait before next poll
+      await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS))
+
       try {
         const prepStatus = await getTemplatePreparationStatus(sessionId)
 
@@ -195,13 +219,9 @@ export function useMapping(sessionId: string) {
         // Update progress message with elapsed time
         const elapsed = Math.floor((Date.now() - startTime) / 1000)
         setProgressMessage(`Analyzing your template... (${elapsed}s)`)
-
-        // Wait before next poll
-        await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS))
       } catch (err) {
         console.warn('Error checking preparation status:', err)
         // Continue polling even if one request fails
-        await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS))
       }
     }
 

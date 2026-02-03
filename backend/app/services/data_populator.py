@@ -334,17 +334,48 @@ You ARE ALLOWED to make these adjustments ONLY via inline styles on individual e
 </mapping_configuration>
 
 <slide_structure_spec>
-REPORT STRUCTURE (based on Flash Report specification):
-The generated HTML report should follow this structure:
+REPORT STRUCTURE - MANDATORY REQUIREMENTS:
+
+═══════════════════════════════════════════════════════════════════════════════
+CRITICAL: YOU MUST FOLLOW THIS EXACT STRUCTURE. NO EXCEPTIONS.
+═══════════════════════════════════════════════════════════════════════════════
 
 FOR SINGLE PROJECT:
 - The template defines the slide types (Card, Progress, Planning, etc.)
 - Populate ALL slides with the project's data
 
-FOR MULTI-PROJECT REPORTS:
-- Slide 1: SUMMARY SLIDE - Overview of all projects with status/mood indicators
-- Slides 2-N: PROJECT SLIDES - Template structure repeated for each project
-- Final Slide: DATA NOTES - List any fields that could not be populated
+FOR MULTI-PROJECT REPORTS (2+ projects):
+════════════════════════════════════════
+THIS STRUCTURE IS MANDATORY AND NON-NEGOTIABLE:
+
+**SLIDE 1 - PORTFOLIO OVERVIEW (REQUIRED - MUST BE FIRST)**
+- This slide MUST exist and MUST be the first slide
+- Shows a summary table/grid of ALL projects at a glance
+- Include for each project: Name, Status indicator (color/icon), Mood/Weather, Progress %
+- Use a compact table or grid layout to fit all projects
+- This is an EXECUTIVE SUMMARY - gives leadership a quick view of portfolio health
+- Example format:
+  | Project Name | Status | Mood | Progress |
+  |--------------|--------|------|----------|
+  | Project A    | 🟢 On Track | ☀️ | 85% |
+  | Project B    | 🟡 At Risk  | ⛅ | 60% |
+  | Project C    | 🔴 Delayed  | 🌧️ | 40% |
+
+**SLIDES 2 to N - INDIVIDUAL PROJECT SLIDES (REQUIRED)**
+- Repeat the FULL template structure for EACH project
+- Each project gets its own complete set of slides (Card, Progress, Planning, etc.)
+- Maintain consistent formatting across all projects
+- Number of slides per project = number of slides in the template
+
+**FINAL SLIDE - DATA NOTES (REQUIRED - MUST BE LAST)**
+- This slide MUST exist and MUST be the last slide
+- Lists any fields that could not be populated due to missing data
+- Include generation timestamp
+- Example: "Report generated on Feb 3, 2026. Missing data: Budget for Project B, End date for Project C"
+
+════════════════════════════════════════
+FAILURE TO INCLUDE THESE 3 SECTIONS (Overview, Project Slides, Data Notes) IS UNACCEPTABLE.
+════════════════════════════════════════
 
 COMMON SLIDE TYPES (per project, as defined by template):
 1. PROJECT CARD: Name, Budget, Achievements, Status, Mood/Weather, Risk level, Key dates
@@ -639,23 +670,54 @@ This tells you which template field maps to which data path:
 </mapping_configuration>
 
 <slide_structure_spec>
-MULTI-PROJECT REPORT STRUCTURE (Flash Report specification):
+═══════════════════════════════════════════════════════════════════════════════
+MULTI-PROJECT REPORT STRUCTURE - MANDATORY AND NON-NEGOTIABLE
+═══════════════════════════════════════════════════════════════════════════════
 
-SLIDE SEQUENCE:
-1. SUMMARY SLIDE (Slide 1):
-   - Overview table/grid of ALL projects
-   - Show: Project name, Status, Mood/Weather indicator, Key metric
-   - This gives executives a quick portfolio view
+YOU MUST GENERATE EXACTLY THIS STRUCTURE. FAILURE TO DO SO IS UNACCEPTABLE.
 
-2. PROJECT SLIDES (Slides 2 to N):
-   - For EACH project, generate the complete template slide set
-   - Template typically includes: Card, Progress, Planning slides
-   - Each project gets its own complete set of slides
+**SLIDE 1 - PORTFOLIO OVERVIEW (REQUIRED - MUST BE FIRST SLIDE)**
+════════════════════════════════════════════════════════════════
+- This slide MUST exist and MUST be the very first slide in the report
+- Purpose: Executive summary giving leadership a quick view of all projects
+- Content REQUIRED:
+  * Table or grid showing ALL projects at a glance
+  * Each row/card must show: Project Name, Status (color indicator), Mood/Weather, Progress %
+  * Use HTML table or CSS grid that fits the template style
+- Example table structure:
+  <table class="portfolio-overview">
+    <tr><th>Project</th><th>Status</th><th>Mood</th><th>Progress</th></tr>
+    <tr><td>Project A</td><td><span style="color:#22c55e">On Track</span></td><td>Sunny</td><td>85%</td></tr>
+    <tr><td>Project B</td><td><span style="color:#eab308">At Risk</span></td><td>Cloudy</td><td>60%</td></tr>
+  </table>
+- DO NOT SKIP THIS SLIDE. IT IS MANDATORY.
 
-3. DATA NOTES SLIDE (Final slide):
-   - List any fields that could not be populated
-   - Show which projects had missing data
-   - This is for transparency about data gaps
+**SLIDES 2 to N - INDIVIDUAL PROJECT SLIDES (REQUIRED)**
+════════════════════════════════════════════════════════════════
+- For EACH project in the data, generate a COMPLETE set of template slides
+- If template has 3 slides, and there are 5 projects, generate 15 project slides (3 × 5)
+- Each project gets the full template structure: Card, Progress, Planning, etc.
+- Add data-project-index and data-project-name attributes to each slide
+- Maintain consistent formatting across all projects
+
+**FINAL SLIDE - DATA NOTES (REQUIRED - MUST BE LAST SLIDE)**
+════════════════════════════════════════════════════════════════
+- This slide MUST exist and MUST be the very last slide in the report
+- Purpose: Transparency about data quality and gaps
+- Content REQUIRED:
+  * Generation timestamp (e.g., "Generated: Feb 3, 2026 at 15:30 UTC")
+  * List of any fields that could not be populated
+  * Which projects had missing or incomplete data
+- Example: "Missing data: Budget not available for Project C, End date not set for Project B"
+- If no data is missing, state: "All fields populated successfully"
+- DO NOT SKIP THIS SLIDE. IT IS MANDATORY.
+
+════════════════════════════════════════════════════════════════
+CHECKLIST - YOUR OUTPUT MUST INCLUDE:
+[ ] First slide = Portfolio Overview with ALL projects in a table/grid
+[ ] Middle slides = Complete template set for EACH project
+[ ] Last slide = Data Notes with timestamp and missing data list
+════════════════════════════════════════════════════════════════
 
 COMMON SLIDE TYPES (per project):
 1. PROJECT CARD: Name, Budget, Achievements, Status, Mood/Weather, Risk, Dates
@@ -673,18 +735,39 @@ DATA PRIORITIES (populate these fields first):
 </slide_structure_spec>
 
 <generation_task>
+═══════════════════════════════════════════════════════════════════════════════
+GENERATION STEPS - FOLLOW IN EXACT ORDER
+═══════════════════════════════════════════════════════════════════════════════
+
 1. COPY the <style> block from the template EXACTLY - no modifications
 
-2. CREATE SUMMARY SLIDE FIRST:
-   - Generate a summary/overview slide listing ALL projects
-   - Include: project name, status indicator, mood/weather, key metric
-   - Use a table or card grid layout that fits the template style
+2. **FIRST SLIDE - PORTFOLIO OVERVIEW (MANDATORY)**:
+   - This MUST be the first slide in your output
+   - Create a new slide (not from template) with class="slide portfolio-overview"
+   - Include a table/grid showing ALL projects:
+     * Column 1: Project Name
+     * Column 2: Status (with color: green=On Track, yellow=At Risk, red=Delayed)
+     * Column 3: Mood/Weather (text: Sunny, Cloudy, Rainy, Stormy)
+     * Column 4: Progress percentage
+   - Style it to match the template's look and feel
+   - This slide gives executives a quick portfolio health view
+   - DO NOT SKIP THIS STEP
 
-3. FOR EACH PROJECT in projects_data, create a complete set of slides:
+3. **PROJECT SLIDES (MANDATORY)**:
+   For EACH PROJECT in projects_data, create a complete set of slides:
    a. Copy all slide <div>s from the template body
    b. Add attributes: data-project-index="N" data-project-name="Project Name"
    c. Replace ALL {{field_name}} placeholders with actual data from that project
    d. Use the mapping_configuration to find the correct data path for each field
+
+4. **LAST SLIDE - DATA NOTES (MANDATORY)**:
+   - This MUST be the last slide in your output
+   - Create a new slide with class="slide data-notes"
+   - Include:
+     * Generation timestamp
+     * List of any fields that could not be populated
+     * Which projects had missing data (if any)
+   - DO NOT SKIP THIS STEP
 
 4. TEXT FITTING - Critical for each slide:
    - Long titles: Reduce font-size inline (e.g., style="font-size: 14px;")
@@ -742,34 +825,75 @@ DATA PRIORITIES (populate these fields first):
     - If a project has more data than fits, prioritize key metrics
     - Ensure consistency in what data appears across all projects
 
-11. CREATE DATA NOTES SLIDE (at the end):
-    - Add a final slide listing any fields that could not be populated
-    - Group missing fields by project if applicable
-    - This provides transparency about data gaps
+11. CONTENT DECISIONS:
+    - Analyze what data is available for each project
+    - Present the most relevant and important information
+    - If a project has more data than fits, prioritize key metrics
+    - Ensure consistency in what data appears across all projects
 </generation_task>
 
 <output_structure>
+YOUR OUTPUT MUST FOLLOW THIS EXACT STRUCTURE:
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Project Report</title>
+    <title>Portfolio Flash Report</title>
     [EXACT COPY of template's <style> block]
 </head>
 <body>
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- SLIDE 1: PORTFOLIO OVERVIEW (MANDATORY - MUST BE FIRST)    -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <div class="slide portfolio-overview" data-slide-number="1">
+        <h1>Portfolio Overview</h1>
+        <table>
+            <tr><th>Project</th><th>Status</th><th>Mood</th><th>Progress</th></tr>
+            <tr><td>Project A</td><td>On Track</td><td>Sunny</td><td>85%</td></tr>
+            <!-- ... all projects ... -->
+        </table>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- SLIDES 2-N: INDIVIDUAL PROJECT SLIDES                       -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
     <!-- Project 1 slides -->
-    <div class="slide" data-slide-number="1" data-project-index="0" data-project-name="...">...</div>
-    <div class="slide" data-slide-number="2" data-project-index="0" data-project-name="...">...</div>
+    <div class="slide" data-slide-number="2" data-project-index="0" data-project-name="Project A">...</div>
+    <div class="slide" data-slide-number="3" data-project-index="0" data-project-name="Project A">...</div>
 
     <!-- Project 2 slides -->
-    <div class="slide" data-slide-number="1" data-project-index="1" data-project-name="...">...</div>
-    <div class="slide" data-slide-number="2" data-project-index="1" data-project-name="...">...</div>
+    <div class="slide" data-slide-number="4" data-project-index="1" data-project-name="Project B">...</div>
+    <div class="slide" data-slide-number="5" data-project-index="1" data-project-name="Project B">...</div>
 
     <!-- ... more projects ... -->
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- FINAL SLIDE: DATA NOTES (MANDATORY - MUST BE LAST)          -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <div class="slide data-notes" data-slide-number="LAST">
+        <h1>Data Notes</h1>
+        <p>Report generated: [TIMESTAMP]</p>
+        <h3>Missing Data:</h3>
+        <ul>
+            <li>Project B: Budget information not available</li>
+            <li>Project C: End date not specified</li>
+        </ul>
+        <p>Or if no missing data: "All fields populated successfully."</p>
+    </div>
 </body>
 </html>
 </output_structure>
+
+<final_checklist>
+BEFORE RETURNING YOUR OUTPUT, VERIFY:
+[ ] First slide is Portfolio Overview with ALL projects listed
+[ ] Each project has a complete set of template slides
+[ ] Last slide is Data Notes with timestamp and missing data info
+[ ] All {{placeholders}} have been replaced with actual data
+[ ] No empty slides or blank sections
+</final_checklist>
 
 <output>
 Return ONLY the complete HTML document.

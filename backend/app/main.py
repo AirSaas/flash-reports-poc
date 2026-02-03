@@ -410,6 +410,12 @@ async def process_html_generation(
             html_template = await download_html_template(html_template_url)
             print(f"         Downloaded HTML template ({len(html_template)} chars)")
 
+            # Count slides from HTML
+            import re
+            slide_matches = re.findall(r'<div[^>]*class="[^"]*slide[^"]*"[^>]*data-slide-number="(\d+)"', html_template)
+            slide_count = len(slide_matches) if slide_matches else 1
+            print(f"         Found {slide_count} slides in HTML template")
+
             template_html_url = html_template_url
             step_times['step3_5'] = time.time() - step_start
             print(f"         Completed in {step_times['step3_5']:.2f}s")
@@ -429,7 +435,8 @@ async def process_html_generation(
             step_start = time.time()
             print(f"[STEP 4/6] Converting PPTX to images...")
             images, pdf_bytes = convert_pptx_to_images(pptx_bytes, return_pdf=True)
-            print(f"         Generated {len(images)} slide images")
+            slide_count = len(images)
+            print(f"         Generated {slide_count} slide images")
 
             # Upload PDF to storage
             timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
@@ -544,9 +551,9 @@ async def process_html_generation(
                 "pdfStoragePath": report_pdf_storage_path,
                 "pptxUrl": report_pptx_url,
                 "templateHtmlUrl": template_html_url,
-                "templatePdfUrl": pdf_url if pdf_bytes else None,
+                "templatePdfUrl": pdf_url,
                 "projectCount": len(projects),
-                "slideCount": len(images)
+                "slideCount": slide_count
             }
         )
 
@@ -894,15 +901,14 @@ async def list_slides_from_html(
             if len(title) > 60:
                 title = title[:57] + "..."
 
-            # Count template fields ({{field_name}} patterns)
-            slide_html = str(slide_div)
-            fields = re.findall(r'\{\{(\w+)\}\}', slide_html)
-            field_count = len(set(fields))  # Unique fields
+            # Count content sections (section-box elements)
+            section_boxes = slide_div.find_all(class_='section-box')
+            content_count = len(section_boxes) if section_boxes else 1
 
             slides.append({
                 "slide_number": slide_number,
                 "title": title,
-                "field_count": field_count,
+                "field_count": content_count,  # Number of content sections
                 "layout": "content"  # Could be enhanced to detect layout type
             })
 

@@ -61,41 +61,50 @@ const ANALYSIS_SCHEMA = {
 
 const ANALYSIS_PROMPT = `You are an expert at analyzing HTML templates for project portfolio reports.
 
-Your task is to analyze an HTML template (converted from PowerPoint) and identify UNIQUE slide layouts (templates), deduplicating repeated patterns.
+Your task is to analyze an HTML replica of a PowerPoint presentation and identify UNIQUE slide layouts, deduplicating repeated patterns.
+
+## Important Context
+
+The HTML contains REAL DATA (actual project names, dates, numbers, etc.) - NOT placeholders.
+Your job is to identify which parts of the content are "dynamic fields" that would change for each project.
 
 ## How to analyze
 
-1. The HTML contains slides as sections with class "slide" and data-slide-number attributes
-2. For each slide, examine: heading text, content structure, tables, lists, placeholder patterns
+1. The HTML contains slides as divs with class "slide" and data-slide-number attributes
+2. Compare slides that have SIMILAR STRUCTURE to find patterns
 3. **Group slides by structural similarity** using these criteria:
-   - Same general layout structure (same number of sections, tables, lists)
-   - Same placeholder patterns (e.g., {{field}}, [field], {field}, or descriptive text like "Project Name", "Owner", "N/A", "TBD")
-   - Text differs only in the data values (project names, numbers, dates) but structural labels are the same
-4. For each unique layout group, identify all fields that need data
+   - Same layout structure (same number of sections, tables, lists, positioned elements)
+   - Same labels but DIFFERENT values (e.g., both have "Project:" label but different project names)
+   - Structurally identical but content values differ
+4. For each unique layout group, identify which text values are "fields" (dynamic data)
 
 ## Field Detection
 
-Look for these patterns that indicate dynamic fields:
-- Placeholder syntax: {{field}}, [field], {field}, %field%
-- Descriptive labels followed by values: "Project Name: ABC Corp" → field is "project_name"
-- Table cells with data: headers are field names, cells are values
-- Lists with repeated structure
-- Dates, percentages, currency values
-- Text like "N/A", "TBD", "-", "..." which indicate missing data placeholders
+Identify fields by comparing structurally similar slides:
+- If Slide 1 has "Project: Alpha" and Slide 2 has "Project: Beta" → "project_name" field
+- If Slide 1 has "Budget: $50,000" and Slide 2 has "Budget: $75,000" → "budget" field
+- Table cells that have different values across similar slides → fields
+- Dates, percentages, currency values, person names that vary → fields
+
+Also look for:
+- Labels followed by data: "Owner: John Smith" → owner field
+- Table headers (static) vs table cell values (fields)
+- Status indicators: "In Progress", "Completed" → status field
+- Numeric values: percentages, amounts, counts → numeric fields
 
 ## Classification
 
-- **per_project**: A slide layout that repeats once per project. If a layout appears N times with different project data filling the same placeholders, it is per_project. Example: "Project Card", "Progress", "Planning".
-- **global**: A slide that appears only once in the entire presentation. Example: title page, portfolio summary, table of contents, closing slide.
+- **per_project**: A slide layout that appears multiple times with different project data. If Slide 1 and Slide 5 have the same structure but different content, that's per_project.
+- **global**: A slide that appears only once. Example: title page, summary, table of contents.
 
 ## Important
 
 - Return ONLY unique templates, NOT every slide instance
-- If 5 slides share the same layout but have different project data, that is ONE template with example_slide_numbers listing all 5
-- Generate unique snake_case IDs for template_id (e.g., "project_card", "progress_slide") and for field IDs (e.g., "project_name", "budget_total")
-- projects_detected: count how many distinct projects appear in the template (= number of repetitions of per_project slides)
-- Be thorough with field extraction — capture every field that could be populated with data
-- If a template has NO repeated slides (all unique), classify all as "global" and set projects_detected to 0`
+- If 5 slides share the same layout, that is ONE template with example_slide_numbers listing all 5
+- Generate unique snake_case IDs for template_id and field IDs
+- projects_detected: count how many times per_project templates repeat
+- The placeholder_text should be the EXAMPLE value from the original slide (e.g., "Alpha Corp", "$50,000")
+- Be thorough — every piece of data that varies between similar slides is a potential field`
 
 /**
  * Download HTML template from Supabase storage URL
@@ -106,15 +115,19 @@ async function downloadHtmlTemplate(
 ): Promise<string> {
   console.log('Downloading HTML template from:', htmlUrl)
 
-  // Extract path from URL - format: https://xxx.supabase.co/storage/v1/object/public/templates/...
-  const urlParts = htmlUrl.split('/storage/v1/object/public/templates/')
-  if (urlParts.length !== 2) {
+  // Extract bucket and path from URL
+  // Format: https://xxx.supabase.co/storage/v1/object/public/{bucket}/{path}
+  const publicMatch = htmlUrl.match(/\/storage\/v1\/object\/public\/([^/]+)\/(.+)$/)
+  if (!publicMatch) {
     throw new Error(`Invalid HTML URL format: ${htmlUrl}`)
   }
-  const storagePath = urlParts[1]
+
+  const bucket = publicMatch[1]
+  const storagePath = publicMatch[2]
+  console.log(`Downloading from bucket: ${bucket}, path: ${storagePath}`)
 
   const { data: fileData, error: downloadError } = await supabase.storage
-    .from('templates')
+    .from(bucket)
     .download(storagePath)
 
   if (downloadError) {
@@ -142,22 +155,66 @@ function filterSlidesByNumbers(htmlContent: string, slideNumbers: number[]): str
 
   console.log('Filtering HTML to slides:', slideNumbers)
 
-  // Parse HTML and filter slides
-  // Slides are marked with data-slide-number attribute
-  const slideRegex = /<section[^>]*class="slide"[^>]*data-slide-number="(\d+)"[^>]*>[\s\S]*?<\/section>/gi
+  // Find all slides by looking for divs with class="slide" and data-slide-number
+  // Handle various HTML formats:
+  // - <div class="slide" data-slide-number="1">
+  // - <div data-slide-number="1" class="slide">
+  // - <div class="slide other" data-slide-number="1">
+  // - <section class="slide" data-slide-number="1">
+  const allSlides: { full: string; number: number; startIndex: number; tagName: string }[] = []
 
-  let filteredHtml = htmlContent
-  const allSlides: { full: string; number: number }[] = []
+  // Find each slide opening tag - flexible regex for different orderings and tag names
+  const slideOpenRegex = /<(div|section)[^>]*\bclass\s*=\s*["'][^"']*\bslide\b[^"']*["'][^>]*\bdata-slide-number\s*=\s*["'](\d+)["'][^>]*>|<(div|section)[^>]*\bdata-slide-number\s*=\s*["'](\d+)["'][^>]*\bclass\s*=\s*["'][^"']*\bslide\b[^"']*["'][^>]*>/gi
+  let openMatch
+  while ((openMatch = slideOpenRegex.exec(htmlContent)) !== null) {
+    // Extract slide number from either group (depends on attribute order)
+    const slideNumber = parseInt(openMatch[2] || openMatch[4], 10)
+    // Extract tag name (div or section)
+    const tagName = (openMatch[1] || openMatch[3]).toLowerCase()
+    const startIndex = openMatch.index
 
-  let match
-  while ((match = slideRegex.exec(htmlContent)) !== null) {
-    allSlides.push({
-      full: match[0],
-      number: parseInt(match[1], 10)
-    })
+    // Find the closing tag for this slide by counting nested tags of same type
+    let depth = 1
+    let searchIndex = startIndex + openMatch[0].length
+    let endIndex = -1
+
+    const openTag = `<${tagName}`
+    const closeTag = `</${tagName}>`
+
+    while (depth > 0 && searchIndex < htmlContent.length) {
+      const nextOpen = htmlContent.toLowerCase().indexOf(openTag, searchIndex)
+      const nextClose = htmlContent.toLowerCase().indexOf(closeTag, searchIndex)
+
+      if (nextClose === -1) break
+
+      if (nextOpen !== -1 && nextOpen < nextClose) {
+        depth++
+        searchIndex = nextOpen + openTag.length
+      } else {
+        depth--
+        if (depth === 0) {
+          endIndex = nextClose + closeTag.length
+        }
+        searchIndex = nextClose + closeTag.length
+      }
+    }
+
+    if (endIndex > startIndex) {
+      allSlides.push({
+        full: htmlContent.substring(startIndex, endIndex),
+        number: slideNumber,
+        startIndex,
+        tagName
+      })
+    }
   }
 
-  // If no slides found with data-slide-number, try alternative patterns
+  console.log(`Found ${allSlides.length} slides in HTML:`)
+  for (const slide of allSlides) {
+    console.log(`  - Slide ${slide.number}: ${slide.full.length} chars`)
+  }
+
+  // If no slides found, return full HTML
   if (allSlides.length === 0) {
     console.log('No slides found with data-slide-number, returning full HTML')
     return htmlContent
@@ -165,28 +222,28 @@ function filterSlidesByNumbers(htmlContent: string, slideNumbers: number[]): str
 
   // Filter to only requested slides
   const slidesToKeep = allSlides.filter(s => slideNumbers.includes(s.number))
+  const slidesToRemove = allSlides.filter(s => !slideNumbers.includes(s.number))
+
+  console.log(`Keeping ${slidesToKeep.length} slides: ${slidesToKeep.map(s => `#${s.number}(${s.full.length}ch)`).join(', ')}`)
+  console.log(`Removing ${slidesToRemove.length} slides: ${slidesToRemove.map(s => `#${s.number}(${s.full.length}ch)`).join(', ')}`)
 
   if (slidesToKeep.length === 0) {
     console.log('No matching slides found, returning full HTML')
     return htmlContent
   }
 
-  // Rebuild HTML with only selected slides
-  // Find the container and replace its content
-  const containerMatch = htmlContent.match(/<div[^>]*class="slides-container"[^>]*>/i)
-  if (containerMatch) {
-    const containerStart = htmlContent.indexOf(containerMatch[0])
-    const containerEnd = htmlContent.lastIndexOf('</div>')
+  // Build filtered HTML - keep everything before first slide, selected slides, and everything after last slide
+  const firstSlide = allSlides[0]
+  const lastSlide = allSlides[allSlides.length - 1]
+  const lastSlideEnd = lastSlide.startIndex + lastSlide.full.length
 
-    // Build new content with only selected slides
-    const newSlidesContent = slidesToKeep.map(s => s.full).join('\n')
+  const htmlBefore = htmlContent.substring(0, firstSlide.startIndex)
+  const htmlAfter = htmlContent.substring(lastSlideEnd)
+  const selectedSlidesHtml = slidesToKeep.map(s => s.full).join('\n\n')
 
-    filteredHtml = htmlContent.substring(0, containerStart + containerMatch[0].length) +
-      '\n' + newSlidesContent + '\n' +
-      htmlContent.substring(containerEnd)
-  }
+  const filteredHtml = htmlBefore + selectedSlidesHtml + htmlAfter
 
-  console.log(`Filtered from ${allSlides.length} to ${slidesToKeep.length} slides`)
+  console.log(`Filtered HTML size: ${filteredHtml.length} characters`)
   return filteredHtml
 }
 

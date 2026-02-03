@@ -27,21 +27,15 @@ Analyze each slide image and generate HTML/CSS that replicates EXACTLY its visua
 Your goal is to create a replica so faithful that when placed side-by-side with the original,
 they are completely indistinguishable.
 
-CRITICAL - TEMPLATE GENERATION:
-This is a TEMPLATE for dynamic data population. For any text that appears to be variable/dynamic data
-(project names, dates, numbers, status values, percentages, person names, descriptions, metrics, etc.),
-you MUST replace it with a placeholder using this exact format: {{field_name}}
+CRITICAL - EXACT REPLICATION:
+This is NOT a template with placeholders. You must replicate the slides EXACTLY as they appear,
+including ALL the original text, numbers, names, dates, and values shown in the images.
 
-{field_instructions}
-
-KEEP AS STATIC TEXT (do not templatize):
-- Section headers/labels like "Project Overview", "Status", "Budget", "Timeline"
-- Column headers in tables
-- UI labels and navigation text
-- Generic instructional text
+- Copy all text EXACTLY as shown (project names, person names, dates, numbers, percentages)
+- Do NOT replace any text with placeholders like {{field_name}}
+- Do NOT modify, summarize, or change any content
+- The HTML should look IDENTICAL to the original slides
 </task>
-
-{long_text_instructions}
 
 <character_encoding>
 CRITICAL - CHARACTER HANDLING:
@@ -186,7 +180,7 @@ Before finalizing, verify each slide against this checklist:
 5. ✓ Lists and bullets are properly formatted with clean characters
 6. ✓ Boxes contain their content with proper padding
 7. ✓ No elements overlap incorrectly
-8. ✓ All dynamic data replaced with {{field_name}} placeholders
+8. ✓ All text matches EXACTLY what is shown in the original slides
 9. ✓ No garbled Unicode characters (â–ª, â€", etc.)
 10. ✓ Visual hierarchy is preserved
 </quality_checklist>
@@ -198,7 +192,6 @@ Generate a complete, valid HTML5 document with:
 - <head> with <meta charset="UTF-8"> and <style> tag
 - <body> with background: #1a1a1a and padding: 20px
 - Each slide as: <div class="slide" data-slide-number="N">
-- Include data-field="field_name" attribute on elements containing placeholders
 </output_format>"""
 
 
@@ -228,7 +221,7 @@ body {
 ```
 
 REMEMBER:
-1. Replace ALL dynamic/variable data with {{field_name}} placeholders
+1. Replicate ALL text EXACTLY as shown - do NOT use placeholders
 2. Use clean ASCII/HTML entities for bullets and special characters
 3. Ensure pixel-perfect accuracy in positioning and styling
 4. The output must be production-ready HTML
@@ -347,25 +340,20 @@ def generate_html_template(
     long_text_strategy: str = 'summarize'
 ) -> Dict[str, Any]:
     """
-    Use Claude Vision to generate an HTML template from slide images.
+    Use Claude Vision to generate an exact HTML replica from slide images.
 
     Args:
         images: List of (image_bytes, media_type) tuples
-        mapping_json: Optional mapping configuration to use exact field names
-        long_text_strategy: How to handle long text ('summarize', 'ellipsis', 'omit')
+        mapping_json: Not used (kept for backward compatibility)
+        long_text_strategy: Not used (kept for backward compatibility)
 
     Returns:
-        Dictionary with 'full_html' and 'fields' keys
+        Dictionary with 'full_html' key (exact replica, no placeholders)
     """
     content = []
 
-    # Build dynamic instructions based on mapping and long text strategy
-    field_instructions = build_field_instructions(mapping_json)
-    long_text_instructions = build_long_text_instructions(long_text_strategy)
-    prompt_text = HTML_TEMPLATE_PROMPT_BASE.format(
-        field_instructions=field_instructions,
-        long_text_instructions=long_text_instructions
-    )
+    # Use the base prompt (no placeholder instructions)
+    prompt_text = HTML_TEMPLATE_PROMPT_BASE
 
     # Add the main prompt
     content.append({
@@ -416,25 +404,10 @@ def generate_html_template(
                 "properties": {
                     "full_html": {
                         "type": "string",
-                        "description": "The complete HTML code for the presentation template, including DOCTYPE, head with styles, and body with all slides. All dynamic data must be replaced with {{field_name}} placeholders. Use clean ASCII characters for bullets."
-                    },
-                    "fields": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "field_name": {"type": "string"},
-                                "slide_number": {"type": "integer"},
-                                "description": {"type": "string"},
-                                "example_value": {"type": "string"}
-                            },
-                            "required": ["field_name", "slide_number"],
-                            "additionalProperties": False
-                        },
-                        "description": "List of all template fields found in the HTML with their slide numbers and descriptions"
+                        "description": "The complete HTML code that exactly replicates the slides, including DOCTYPE, head with styles, and body with all slides. Use clean ASCII characters for bullets."
                     }
                 },
-                "required": ["full_html", "fields"],
+                "required": ["full_html"],
                 "additionalProperties": False
             }
         }
@@ -450,6 +423,9 @@ def generate_html_template(
     # Post-process to fix any remaining character encoding issues
     if "full_html" in result:
         result["full_html"] = fix_character_encoding(result["full_html"])
+
+    # Add empty fields for backward compatibility
+    result["fields"] = []
 
     return result
 
