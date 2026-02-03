@@ -141,6 +141,29 @@ export async function listTemplateSlides(
 }
 
 /**
+ * List slides from pre-generated HTML template (optimized path).
+ * Falls back to PPTX if HTML is not available.
+ */
+export async function listSlidesFromHtml(
+  sessionId: string
+): Promise<ListSlidesResponse> {
+  const response = await fetch(`${PYTHON_BACKEND_URL}/list-slides-from-html`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-session-id': sessionId,
+    },
+  })
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Failed to list slides from HTML' }))
+    throw new Error(error.detail || `HTTP ${response.status}`)
+  }
+
+  return response.json()
+}
+
+/**
  * Generate HTML directly (synchronous, for testing).
  * Warning: This can take several minutes.
  */

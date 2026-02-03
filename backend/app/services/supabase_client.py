@@ -227,3 +227,107 @@ async def get_job_status(job_id: str) -> Optional[Dict[str, Any]]:
     supabase = get_supabase_client()
     result = supabase.table('generation_jobs').select('*').eq('id', job_id).single().execute()
     return result.data if result.data else None
+
+
+async def update_template_preparation_status(
+    session_id: str,
+    status: str,
+    html_template_url: Optional[str] = None,
+    template_png_urls: Optional[List[str]] = None,
+    template_pdf_url: Optional[str] = None,
+    error: Optional[str] = None
+) -> None:
+    """
+    Update template preparation status in session.
+
+    Args:
+        session_id: Session ID
+        status: 'pending' | 'processing' | 'completed' | 'failed'
+        html_template_url: URL to the generated HTML template
+        template_png_urls: List of URLs to PNG images of slides
+        template_pdf_url: URL to the PDF version
+        error: Error message if failed
+    """
+    supabase = get_supabase_client()
+
+    update_data: Dict[str, Any] = {
+        "template_preparation_status": status,
+        "updated_at": "now()"
+    }
+
+    if html_template_url:
+        update_data["html_template_url"] = html_template_url
+
+    if template_png_urls:
+        update_data["template_png_urls"] = template_png_urls
+
+    if template_pdf_url:
+        update_data["template_pdf_url"] = template_pdf_url
+
+    if error:
+        update_data["template_preparation_error"] = error
+    elif status == 'completed':
+        # Clear any previous error
+        update_data["template_preparation_error"] = None
+
+    supabase.table('sessions').update(update_data).eq('id', session_id).execute()
+
+
+async def get_template_preparation_status(session_id: str) -> Dict[str, Any]:
+    """
+    Get template preparation status from session.
+
+    Returns:
+        Dict with status, html_template_url, error, etc.
+    """
+    session = await get_session(session_id)
+
+    if not session:
+        return {"status": "pending", "error": "Session not found"}
+
+    return {
+        "status": session.get("template_preparation_status", "pending"),
+        "html_template_url": session.get("html_template_url"),
+        "template_png_urls": session.get("template_png_urls"),
+        "template_pdf_url": session.get("template_pdf_url"),
+        "error": session.get("template_preparation_error"),
+        "template_path": session.get("template_path")
+    }
+
+
+async def upload_png(session_id: str, png_bytes: bytes, filename: str) -> str:
+    """
+    Upload PNG image to Supabase Storage.
+
+    Returns:
+        Public URL of the uploaded file
+    """
+    supabase = get_supabase_client()
+
+    file_path = f"{session_id}/{filename}"
+
+    result = supabase.storage.from_('outputs').upload(
+        file_path,
+        png_bytes,
+        {"content-type": "image/png"}
+    )
+
+    public_url = supabase.storage.from_('outputs').get_public_url(file_path)
+
+    return public_url
+
+
+async def download_html_template(html_url: str) -> str:
+    """
+    Download HTML template from Supabase Storage URL.
+
+    Args:
+        html_url: Public URL of the HTML file
+
+    Returns:
+        HTML content as string
+    """
+    async with httpx.AsyncClient() as client:
+        response = await client.get(html_url)
+        response.raise_for_status()
+        return response.text

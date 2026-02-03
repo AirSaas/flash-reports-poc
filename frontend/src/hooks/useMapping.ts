@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react'
 import { invokeFunction } from '@lib/supabase'
-import { listTemplateSlides, type SlideInfo } from '@services/python-backend.service'
+import { listTemplateSlides, listSlidesFromHtml, type SlideInfo } from '@services/python-backend.service'
+import { getTemplatePreparationStatus } from '@services/template-preparation.service'
 import type { ProjectsConfig, SmartviewConfig } from '@appTypes/index'
 
 interface MappingOption {
@@ -103,6 +104,7 @@ interface BatchSubmitResponse {
 export type MappingProgressStep =
   | 'idle'
   | 'fetching_projects'
+  | 'preparing_template'  // NEW: waiting for PPTX → HTML conversion
   | 'listing_slides'
   | 'selecting_slides'
   | 'analyzing_template'
@@ -167,13 +169,87 @@ export function useMapping(sessionId: string) {
     }
   }, [sessionId])
 
+  const waitForTemplatePreparation = useCallback(async (): Promise<'completed' | 'failed' | 'timeout'> => {
+    const MAX_WAIT_MS = 3 * 60 * 1000 // 3 minutes max
+    const POLL_INTERVAL_MS = 2000 // 2 seconds
+    const startTime = Date.now()
+
+    setProgressStep('preparing_template')
+    setProgressMessage('Checking template status...')
+
+    // First check - might already be completed (reused from previous session)
+    try {
+      const initialStatus = await getTemplatePreparationStatus(sessionId)
+
+      if (initialStatus.status === 'completed') {
+        setProgressMessage('Template ready!')
+        return 'completed'
+      }
+
+      if (initialStatus.status === 'failed') {
+        console.warn('Template preparation failed:', initialStatus.error)
+        setProgressMessage('Using alternative analysis method...')
+        return 'failed'
+      }
+    } catch (err) {
+      console.warn('Error checking initial preparation status:', err)
+    }
+
+    // Need to wait for preparation to complete
+    setProgressMessage('Analyzing your template...')
+
+    while (Date.now() - startTime < MAX_WAIT_MS) {
+      // Wait before next poll
+      await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS))
+
+      try {
+        const prepStatus = await getTemplatePreparationStatus(sessionId)
+
+        if (prepStatus.status === 'completed') {
+          setProgressMessage('Template analysis completed!')
+          return 'completed'
+        }
+
+        if (prepStatus.status === 'failed') {
+          console.warn('Template preparation failed:', prepStatus.error)
+          setProgressMessage('Using alternative analysis method...')
+          return 'failed'
+        }
+
+        // Update progress message with elapsed time
+        const elapsed = Math.floor((Date.now() - startTime) / 1000)
+        setProgressMessage(`Analyzing your template... (${elapsed}s)`)
+      } catch (err) {
+        console.warn('Error checking preparation status:', err)
+        // Continue polling even if one request fails
+      }
+    }
+
+    setProgressMessage('Taking longer than expected, using alternative method...')
+    return 'timeout'
+  }, [sessionId])
+
   const fetchSlideList = useCallback(async () => {
-    setProgressStep('listing_slides')
-    setProgressMessage('Reading template slides...')
     setError(null)
 
     try {
-      const response = await listTemplateSlides(sessionId)
+      // First, wait for template preparation to complete (or timeout/fail)
+      const prepResult = await waitForTemplatePreparation()
+
+      setProgressStep('listing_slides')
+      setProgressMessage('Reading template slides...')
+
+      let response
+      if (prepResult === 'completed') {
+        // Use optimized HTML-based slide listing
+        setProgressMessage('Reading slides from HTML template...')
+        response = await listSlidesFromHtml(sessionId)
+      } else {
+        // Fallback to PPTX-based listing
+        setProgressMessage('Reading slides from PPTX...')
+        response = await listTemplateSlides(sessionId)
+      }
+
       if (response.success && response.slides) {
         setSlideList(response.slides)
         setProgressStep('selecting_slides')
@@ -188,7 +264,7 @@ export function useMapping(sessionId: string) {
       setProgressStep('error')
       return null
     }
-  }, [sessionId])
+  }, [sessionId, waitForTemplatePreparation])
 
   const analyzeTemplate = useCallback(async (templatePath: string, uniqueSlideNumbers?: number[]) => {
     setProgressStep('analyzing_template')
@@ -416,6 +492,7 @@ export function useMapping(sessionId: string) {
 
   // Computed state for backward compatibility
   const analyzing = progressStep === 'fetching_projects' ||
+                    progressStep === 'preparing_template' ||
                     progressStep === 'listing_slides' ||
                     progressStep === 'analyzing_template' ||
                     progressStep === 'loading_questions' ||

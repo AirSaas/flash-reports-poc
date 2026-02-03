@@ -1,16 +1,19 @@
 # Flash Reports - Python Backend
 
-FastAPI backend for HTML/PDF report generation using Claude Vision.
+FastAPI backend for HTML/PDF/PPTX report generation using Claude Vision.
 
-## Overview
-
-This backend handles the `claude-html` engine, which converts PPTX templates to HTML using Claude Vision, then populates them with project data.
-
-### Pipeline
+## Pipeline
 
 ```
-PPTX Template → PDF → PNG slides → Claude Vision → HTML Template → Data Population → HTML/PDF
+PPTX Template → PDF → PNG slides → Claude Vision → HTML Template → Data Population → HTML/PDF/PPTX
 ```
+
+## Key Features
+
+- **Background Template Preparation**: PPTX → HTML conversion runs async after upload
+- **Exact HTML Replica**: Claude Vision generates pixel-perfect HTML (no placeholders)
+- **Multi-Project Reports**: Generates Portfolio Overview + Per-Project slides + Data Notes
+- **Multiple Output Formats**: HTML, PDF (WeasyPrint), PPTX
 
 ## Requirements
 
@@ -18,20 +21,12 @@ PPTX Template → PDF → PNG slides → Claude Vision → HTML Template → Dat
 
 **macOS**:
 ```bash
-# Required for PPTX to PNG conversion
-brew install poppler
-
-# Required for PDF generation (optional)
-brew install glib pango cairo
+brew install poppler glib pango cairo
 ```
 
 **Ubuntu/Debian**:
 ```bash
-# Required for PPTX to PNG conversion
-apt-get install poppler-utils
-
-# Required for PDF generation (optional)
-apt-get install libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf2.0-0
+apt-get install poppler-utils libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf2.0-0
 ```
 
 ### Python Dependencies
@@ -42,7 +37,8 @@ apt-get install libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf2.0-0
 - Supabase Python client
 - pdf2image (PPTX → PNG)
 - WeasyPrint (HTML → PDF, optional)
-- Pillow (image processing)
+- python-pptx (HTML → PPTX)
+- Pillow, BeautifulSoup4
 
 ## Installation
 
@@ -50,7 +46,6 @@ apt-get install libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf2.0-0
 # Create virtual environment
 python -m venv .venv
 source .venv/bin/activate  # macOS/Linux
-# .venv\Scripts\activate   # Windows
 
 # Install dependencies
 pip install -r requirements.txt
@@ -69,14 +64,12 @@ ANTHROPIC_API_KEY=sk-ant-xxx
 ## Running
 
 ### Development
-
 ```bash
 source .venv/bin/activate
 uvicorn app.main:app --reload --port 8000
 ```
 
 ### Production
-
 ```bash
 gunicorn app.main:app -w 4 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8000
 ```
@@ -87,9 +80,14 @@ gunicorn app.main:app -w 4 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8000
 |----------|--------|-------------|
 | `/` | GET | API info |
 | `/health` | GET | Health check |
+| `/prepare-template` | POST | Start background PPTX → HTML conversion |
+| `/template-preparation-status` | POST | Check preparation status |
+| `/list-slides` | POST | List slides from PPTX (legacy) |
+| `/list-slides-from-html` | POST | List slides from pre-generated HTML (optimized) |
 | `/generate-html` | POST | Create HTML generation job (async) |
 | `/job-status` | POST | Check job status |
-| `/analyze-template` | POST | Analyze PPTX and generate HTML template |
+| `/analyze-template` | POST | Analyze PPTX and generate HTML (legacy) |
+| `/preview-template` | GET | Preview HTML template before population |
 | `/generate-direct` | POST | Synchronous generation (testing only) |
 
 ### Headers
@@ -97,142 +95,102 @@ gunicorn app.main:app -w 4 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8000
 All endpoints (except `/` and `/health`) require:
 - `x-session-id`: Session UUID from frontend
 
-### Generate HTML Job
+## Core Flows
 
-**Request**:
-```bash
-curl -X POST http://localhost:8000/generate-html \
-  -H "Content-Type: application/json" \
-  -H "x-session-id: <SESSION_ID>" \
-  -d '{"use_claude_population": true}'
+### 1. Template Preparation (Background)
+
+Triggered by frontend after template upload:
+
+```
+POST /prepare-template
+  └─► Background task:
+      1. Download PPTX from Supabase Storage
+      2. Convert PPTX → PDF → PNG (pdf2image)
+      3. Send PNGs to Claude Vision
+      4. Generate exact HTML replica
+      5. Upload HTML to Storage
+      6. Update session.template_preparation_status → 'completed'
 ```
 
-**Response**:
-```json
-{
-  "success": true,
-  "jobId": "uuid"
-}
+### 2. HTML Generation (Job-based)
+
+```
+POST /generate-html
+  └─► Creates job in DB, returns jobId
+
+Background task:
+  [STEP 1/6] Load session data (template, mapping, projects)
+  [STEP 2/6] Validate projects
+  [STEP 3-5] Use cached HTML template (or convert PPTX if not cached)
+  [STEP 6/6] Populate HTML with Claude:
+             - SLIDE 1: Portfolio Overview (all projects table)
+             - SLIDES 2-N: Template repeated for each project
+             - LAST SLIDE: Data Notes with timestamp + missing fields
+
+POST /job-status
+  └─► Poll until status = 'completed' or 'failed'
 ```
 
-### Check Job Status
+## Multi-Project Report Structure
 
-**Request**:
-```bash
-curl -X POST http://localhost:8000/job-status \
-  -H "Content-Type: application/json" \
-  -H "x-session-id: <SESSION_ID>" \
-  -d '{"job_id": "<JOB_ID>"}'
-```
+The generated report MUST follow this structure (enforced in prompts):
 
-**Response**:
-```json
-{
-  "success": true,
-  "job": {
-    "id": "uuid",
-    "status": "completed",
-    "result": {
-      "reportId": "uuid",
-      "htmlUrl": "https://storage.../report.html",
-      "pdfUrl": "https://storage.../report.pdf",
-      "templateHtmlUrl": "https://storage.../template.html",
-      "templatePdfUrl": "https://storage.../template.pdf",
-      "projectCount": 5,
-      "slideCount": 10
-    }
-  }
-}
-```
+1. **First Slide - Portfolio Overview** (MANDATORY)
+   - Table/grid showing ALL projects
+   - Columns: Project Name, Status, Mood/Weather, Progress %
 
-## Architecture
+2. **Middle Slides - Per-Project** (MANDATORY)
+   - Complete template set repeated for each project
+   - Each project gets all slides defined in the template
 
-### Services
+3. **Last Slide - Data Notes** (MANDATORY)
+   - Generation timestamp
+   - List of missing/unavailable fields
 
-- **converter.py**: PPTX → PDF → PNG conversion using pdf2image
-- **claude_html.py**: HTML template generation using Claude Vision
-- **data_populator.py**: HTML population with project data
-- **pdf_generator.py**: HTML → PDF conversion using WeasyPrint
-- **supabase_client.py**: Database and storage operations
+## Services
 
-### Job Processing
-
-1. Frontend calls `/generate-html` → returns jobId immediately
-2. Background task processes generation:
-   - Load session data (template, mapping, projects)
-   - Download PPTX from Supabase Storage
-   - Convert PPTX → PDF → PNG slides
-   - Send PNGs to Claude Vision → HTML template
-   - Populate HTML with project data
-   - Generate PDF (if WeasyPrint available)
-   - Upload results to Supabase Storage
-   - Update job status in database
-3. Frontend polls `/job-status` until completed
-
-### PDF Generation
-
-PDF generation is optional and requires WeasyPrint with system libraries.
-
-If unavailable, the backend:
-- Returns `pdfUrl: null` in job result
-- Frontend opens HTML in new tab for browser print-to-PDF
+| Service | Description |
+|---------|-------------|
+| `converter.py` | PPTX → PDF → PNG conversion |
+| `claude_html.py` | Claude Vision HTML generation (exact replica) |
+| `data_populator.py` | HTML population with project data |
+| `pdf_generator.py` | HTML → PDF (WeasyPrint) |
+| `supabase_client.py` | Database and Storage operations |
 
 ## Troubleshooting
 
-### "PDF generation not available"
-
-Install system dependencies:
+### "Unable to get page count" (pdf2image)
 ```bash
-# macOS
-brew install glib pango cairo
-
-# Ubuntu
-apt-get install libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf2.0-0
+brew install poppler  # macOS
 ```
 
-### "Unable to get page count" (pdf2image)
-
-Install Poppler:
+### "PDF generation not available"
 ```bash
-# macOS
-brew install poppler
-
-# Ubuntu
-apt-get install poppler-utils
+brew install glib pango cairo  # macOS
 ```
 
 ### "Session not found" / "No mapping found"
+Ensure frontend has completed:
+1. Session creation
+2. Template upload
+3. Field mapping
+4. Project data fetch
 
-Ensure the frontend has:
-1. Created a session
-2. Uploaded a template
-3. Completed field mapping
-4. Fetched project data
-
-## Development
-
-### Project Structure
+## Project Structure
 
 ```
 backend/
 ├── app/
 │   ├── __init__.py
-│   ├── main.py              # FastAPI application
+│   ├── main.py              # FastAPI app + job processing
 │   ├── config.py            # Environment configuration
 │   └── services/
-│       ├── converter.py     # PPTX → PNG conversion
-│       ├── claude_html.py   # Claude Vision HTML generation
-│       ├── data_populator.py # HTML data population
-│       ├── pdf_generator.py # HTML → PDF conversion
-│       └── supabase_client.py # Supabase operations
+│       ├── converter.py     # PPTX → PNG
+│       ├── claude_html.py   # Claude Vision HTML
+│       ├── data_populator.py # Data population prompts
+│       ├── pdf_generator.py # HTML → PDF
+│       └── supabase_client.py # DB/Storage
 ├── requirements.txt
-├── .env                     # Environment variables (not in git)
+├── .env                     # Environment (not in git)
 └── README.md
 ```
-
-### Adding New Features
-
-1. Add service in `app/services/`
-2. Import and use in `app/main.py`
-3. Update requirements.txt if needed
-4. Document in this README
