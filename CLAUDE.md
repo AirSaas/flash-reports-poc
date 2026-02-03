@@ -2,23 +2,26 @@
 
 ## Overview
 
-Flash Reports is a tool that generates reports from AirSaas project portfolio data. It supports two generation modes:
-- **Claude PPTX**: PowerPoint presentations using Claude's PPTX Skill (via Supabase Edge Functions)
-- **Claude HTML**: HTML/PDF reports using Claude Vision (via Python FastAPI backend)
+Flash Reports generates professional portfolio reports from AirSaas project data. It supports two generation engines:
 
-Users can configure which projects to include, upload a template, map fields, and generate professional reports.
+- **Claude HTML** (Primary): HTML/PDF/PPTX reports via Python FastAPI backend with Claude Vision
+- **Claude PPTX** (Legacy): PowerPoint via Claude's PPTX Skill in Supabase Edge Functions
+
+Users select projects from AirSaas smartviews, upload a PPTX template, map fields via AI-assisted Q&A, and generate reports.
 
 ## Architecture
 
 ### Tech Stack
 
-- **Frontend**: React + TypeScript + Vite + Tailwind CSS + html2pdf.js
-- **Backend (Supabase)**: Supabase Edge Functions (Deno) for PPTX generation
-- **Backend (Python)**: FastAPI for HTML/PDF generation with Claude Vision
-- **Database**: Supabase PostgreSQL
-- **Storage**: Supabase Storage (for templates and generated files)
-- **AI**: Anthropic Claude API (PPTX Skill + Vision)
-- **Plan**: Supabase Pro (150s Edge Function timeout)
+| Layer | Technology |
+|-------|------------|
+| Frontend | React 18 + TypeScript + Vite + Tailwind CSS |
+| Backend (Python) | FastAPI for HTML generation with Claude Vision |
+| Backend (Supabase) | Edge Functions (Deno) for PPTX generation |
+| Database | Supabase PostgreSQL |
+| Storage | Supabase Storage (templates, outputs buckets) |
+| AI | Anthropic Claude API (Vision + PPTX Skill) |
+| Plan | Supabase Pro (150s Edge Function timeout) |
 
 ### Project Structure
 
@@ -26,803 +29,411 @@ Users can configure which projects to include, upload a template, map fields, an
 flash-reports/
 ├── frontend/                    # React application
 │   ├── src/
-│   │   ├── components/          # UI components organized by feature
-│   │   │   ├── chat/           # Chat interface components
-│   │   │   ├── engine/         # Engine selection
-│   │   │   ├── generation/     # Report generation UI
-│   │   │   ├── layout/         # Header, Sidebar
-│   │   │   ├── mapping/        # Field mapping components
-│   │   │   ├── options/        # Long text options
-│   │   │   ├── projects/       # Project configuration
-│   │   │   └── template/       # Template upload/preview
-│   │   ├── config/             # Constants and configuration
-│   │   ├── hooks/              # React hooks (useSession, useMapping, etc.)
-│   │   ├── lib/                # Utilities (storage, supabase client)
-│   │   ├── pages/              # Page components (Home.tsx)
-│   │   ├── services/           # API service functions
-│   │   └── types/              # TypeScript type definitions
-│   └── .env.local              # Environment variables
+│   │   ├── components/          # UI components by feature
+│   │   │   ├── engine/          # EngineSelector
+│   │   │   ├── generation/      # GenerationProgress, EvaluationResult
+│   │   │   ├── layout/          # Header, Sidebar
+│   │   │   ├── mapping/         # BatchMappingEditor, SlideSelector, UseLastMapping
+│   │   │   ├── options/         # LongTextOptions
+│   │   │   ├── projects/        # SmartviewSelector
+│   │   │   └── template/        # TemplateUpload, TemplatePreview, UseLastTemplate
+│   │   ├── hooks/               # React hooks
+│   │   │   ├── useSession.ts    # Session state management
+│   │   │   ├── useMapping.ts    # Mapping workflow with template preparation
+│   │   │   ├── useGenerate.ts   # Report generation with polling
+│   │   │   ├── useUpload.ts     # Template upload + preparation trigger
+│   │   │   ├── useTemplatePreparation.ts  # Background conversion status
+│   │   │   └── useChat.ts       # Chat conversation (legacy)
+│   │   ├── services/            # API service functions
+│   │   │   ├── session.service.ts         # Session and data management
+│   │   │   ├── smartview.service.ts       # AirSaas smartview API
+│   │   │   ├── template-preparation.service.ts  # Background conversion
+│   │   │   ├── python-backend.service.ts  # Python backend calls
+│   │   │   ├── generate.service.ts        # Report generation
+│   │   │   ├── upload.service.ts          # Template upload
+│   │   │   ├── evaluate.service.ts        # Report evaluation
+│   │   │   └── chat.service.ts            # Chat/mapping conversation
+│   │   ├── lib/                 # Utilities (storage, supabase client)
+│   │   ├── pages/               # Home.tsx (main page)
+│   │   └── types/               # TypeScript definitions
+│   └── .env.local
 │
-├── backend/                     # Python FastAPI backend (claude-html engine)
+├── backend/                     # Python FastAPI backend
 │   ├── app/
-│   │   ├── main.py             # FastAPI application
-│   │   ├── config.py           # Environment configuration
+│   │   ├── main.py              # FastAPI application + job processing
+│   │   ├── config.py            # Environment configuration
 │   │   └── services/
 │   │       ├── converter.py     # PPTX → PDF → PNG conversion
-│   │       ├── claude_html.py   # HTML template generation with Claude Vision
-│   │       ├── data_populator.py # HTML population with project data
-│   │       ├── pdf_generator.py # HTML → PDF conversion (WeasyPrint)
-│   │       └── supabase_client.py # Supabase operations
-│   ├── requirements.txt        # Python dependencies
-│   └── .env                    # Environment variables
+│   │       ├── claude_html.py   # HTML generation with Claude Vision (exact replica)
+│   │       ├── data_populator.py  # HTML population with project data
+│   │       ├── pdf_generator.py   # HTML → PDF (WeasyPrint)
+│   │       └── supabase_client.py # Database/Storage operations
+│   ├── requirements.txt
+│   └── .env
 │
 ├── supabase/
-│   ├── functions/              # Edge Functions (claude-pptx engine)
-│   │   ├── _shared/            # Shared utilities
-│   │   │   ├── anthropic.ts    # Claude API helpers, compression
-│   │   │   ├── cors.ts         # CORS handling
-│   │   │   └── supabase.ts     # Supabase client helpers
-│   │   ├── analyze-template/   # Analyzes PPTX template with Claude
-│   │   ├── chat/               # Chat endpoint for mapping questions
-│   │   ├── check-job-status/   # Polls job status for async generation
-│   │   ├── copy-fetched-data/  # Copies project data between sessions
-│   │   ├── copy-mapping/       # Copies mapping + data between sessions
-│   │   ├── evaluate-report/    # Evaluates generated report quality
-│   │   ├── fetch-projects/     # Fetches data from AirSaas API
-│   │   ├── generate-claude-pptx/ # Creates job for PPTX generation
-│   │   ├── get-smartview-projects/ # Gets projects from a smartview
-│   │   ├── list-smartviews/    # Lists available AirSaas smartviews
-│   │   ├── get-session/        # Gets/updates session state
-│   │   ├── mapping-question/   # Gets next mapping question
-│   │   ├── process-pptx-job/   # Actual PPTX generation with Claude
-│   │   └── upload-template/    # Handles template uploads
-│   └── migrations/             # Database migrations
+│   ├── functions/               # Edge Functions
+│   │   ├── _shared/             # Shared utilities
+│   │   ├── analyze-template/    # Field analysis (uses pre-generated HTML)
+│   │   ├── fetch-projects/      # Downloads data from AirSaas
+│   │   ├── list-smartviews/     # Lists AirSaas smartviews
+│   │   ├── get-smartview-projects/  # Gets projects in a smartview
+│   │   ├── mapping-batch/       # Generates mapping suggestions
+│   │   ├── mapping-batch-submit/# Saves user's mapping choices
+│   │   ├── copy-mapping/        # Reuses mapping from previous session
+│   │   ├── copy-fetched-data/   # Reuses project data
+│   │   ├── generate-claude-pptx/# Creates PPTX generation job
+│   │   ├── process-pptx-job/    # Executes PPTX generation
+│   │   └── check-job-status/    # Polls job status
+│   └── migrations/
+│
+├── CLAUDE.md                    # This file
+├── README.md                    # Quick start guide
+└── SPEC.md                      # Original specification
 ```
-
-## Data Flow
-
-### Smartview-Based Project Selection
-
-Projects are now selected via AirSaas smartviews instead of manual JSON configuration:
-
-```
-┌─────────────┐     ┌──────────────────┐     ┌─────────────────────────────┐
-│  AirSaas    │────▶│  list-smartviews │────▶│ Frontend: SmartviewSelector │
-│ Smartviews  │     │                  │     │ (user selects a smartview)  │
-└─────────────┘     └──────────────────┘     └─────────────────────────────┘
-                                                          │
-                                                          ▼
-┌─────────────┐     ┌──────────────────┐     ┌─────────────────────────────┐
-│  AirSaas    │────▶│ get-smartview-   │────▶│ Shows project list preview  │
-│  Projects   │     │    projects      │     │ (from selected smartview)   │
-└─────────────┘     └──────────────────┘     └─────────────────────────────┘
-```
-
-### Single Source of Truth
-
-**Project data is stored ONLY in `sessions.fetched_projects_data`**
-
-This simplifies the architecture and prevents data synchronization issues.
-
-```
-┌─────────────┐     ┌──────────────────┐     ┌─────────────────────────────┐
-│  AirSaas    │────▶│  fetch-projects  │────▶│ sessions.fetched_projects_  │
-│    API      │     │ (smartviewConfig)│     │           data              │
-└─────────────┘     └──────────────────┘     └─────────────────────────────┘
-                                                          │
-                                                          ▼
-                                             ┌─────────────────────────────┐
-                                             │   process-pptx-job          │
-                                             │   (reads project data)      │
-                                             └─────────────────────────────┘
-```
-
-### Database Tables
-
-#### `sessions`
-- `id` (UUID) - Session identifier (generated client-side)
-- `current_step` (text) - Current workflow step
-- `fetched_projects_data` (JSONB) - **Single source of truth for project data**
-  ```json
-  {
-    "fetched_at": "2025-01-22T...",
-    "workspace": "workspace-id",
-    "project_count": 7,
-    "successful_count": 7,
-    "projects": [{ ... }, { ... }]
-  }
-  ```
-- `html_template_url` (text) - URL to pre-generated HTML template (for optimized analysis)
-- `template_png_urls` (JSONB) - Array of URLs to PNG images of each slide
-- `template_pdf_url` (text) - URL to PDF version of template
-- `template_preparation_status` (text) - 'pending' | 'processing' | 'completed' | 'failed'
-- `template_preparation_error` (text) - Error message if preparation failed
-- `created_at`, `updated_at` (timestamps)
-
-#### `mappings`
-- `id` (UUID) - Primary key
-- `session_id` (UUID) - Foreign key to sessions
-- `mapping_json` (JSONB) - Field mapping configuration
-- `template_path` (text) - Path to uploaded template
-- `long_text_strategy` (text) - 'summarize' | 'ellipsis' | 'omit'
-- `created_at` (timestamp)
-
-#### `generated_reports`
-- `id` (UUID) - Primary key
-- `session_id` (UUID) - Foreign key to sessions
-- `engine` (text) - Generation engine used
-- `pptx_path` (text) - Path to generated file in storage
-- `iteration` (integer) - Report iteration number
-- `created_at` (timestamp)
-
-#### `generation_jobs` (for async processing)
-- `id` (UUID) - Primary key
-- `session_id` (UUID) - Foreign key to sessions
-- `status` (text) - 'pending' | 'processing' | 'completed' | 'failed'
-- `engine` (text) - Generation engine ('gamma' or 'claude-pptx')
-- `input_data` (JSONB) - Snapshot of mapping and project data at job creation
-- `result` (JSONB) - Contains reportId, pptxUrl, storagePath, iteration on completion
-- `error` (text) - Error message if failed
-- `prompt` (text) - The prompt sent to Gamma/Claude for debugging
-- `created_at`, `started_at`, `completed_at` (timestamps)
 
 ## User Flow
 
 ```
-┌──────────────────┐
-│  Select Engine   │  (claude-pptx)
-└────────┬─────────┘
-         ▼
-┌──────────────────┐
-│ Select Smartview │  User selects a smartview from AirSaas
-│                  │  (replaces manual JSON configuration)
-└────────┬─────────┘
-         ▼
-┌──────────────────┐
-│ Upload Template  │  Or use last template
-└────────┬─────────┘
-         ▼
-┌──────────────────┐
-│ Check Fetched    │  Optional: reuse previous data?
-│ Data (optional)  │
-└────────┬─────────┘
-         ▼
-┌──────────────────┐
-│ Check Mapping    │  Optional: reuse previous mapping?
-│ (optional)       │
-└────────┬─────────┘
-         ▼
-┌──────────────────┐
-│ Mapping          │  1. fetch-projects (downloads from AirSaas)
-│                  │  2. analyze-template (extracts fields)
-│                  │  3. mapping-question (user answers Q&A)
-└────────┬─────────┘
-         ▼
-┌──────────────────┐
-│ Long Text        │  How to handle long texts?
-│ Options          │  - Summarize
-│                  │  - Truncate with ellipsis
-│                  │  - Omit
-└────────┬─────────┘
-         ▼
-┌──────────────────┐
-│ Generating       │  Async job-based generation (see below)
-└────────┬─────────┘
-         ▼
-┌──────────────────┐
-│ Evaluating       │  evaluate-report
-└────────┬─────────┘
-         ▼
-┌──────────────────┐
-│ Done             │  Download PPTX/PDF
-└──────────────────┘
+┌──────────────────────┐
+│ 1. Select Engine     │  (claude-html recommended)
+└──────────┬───────────┘
+           ▼
+┌──────────────────────┐
+│ 2. Select Smartview  │  User picks smartview from AirSaas dropdown
+│    + Projects        │  Preview shows projects in the smartview
+└──────────┬───────────┘
+           ▼
+┌──────────────────────┐
+│ 3. Upload Template   │  Or "Use Last Template" (reuses cached HTML)
+│    [Background:      │  Triggers PPTX → HTML conversion in background
+│     PPTX → HTML]     │
+└──────────┬───────────┘
+           ▼
+┌──────────────────────┐
+│ 4. Reuse Data?       │  Optional: "Use cached data" from previous session
+│    (if available)    │
+└──────────┬───────────┘
+           ▼
+┌──────────────────────┐
+│ 5. Reuse Mapping?    │  Optional: "Use last mapping" (copies mapping+data)
+│    (if available)    │
+└──────────┬───────────┘
+           ▼
+┌──────────────────────┐     ┌─────────────────────────────────────────┐
+│ 6. Mapping           │     │ Sub-steps:                              │
+│                      │ ──► │ a) Wait for template preparation        │
+│                      │     │ b) Download project data from AirSaas   │
+│                      │     │ c) List slides (from HTML or PPTX)      │
+│                      │     │ d) User selects unique slide templates  │
+│                      │     │ e) analyze-template extracts fields     │
+│                      │     │ f) mapping-batch generates suggestions  │
+│                      │     │ g) User reviews/edits in BatchMappingEditor │
+└──────────┬───────────┘     └─────────────────────────────────────────┘
+           ▼
+┌──────────────────────┐
+│ 7. Long Text Options │  How to handle long text: Summarize/Truncate/Omit
+└──────────┬───────────┘
+           ▼
+┌──────────────────────┐
+│ 8. Generating        │  Job-based async generation with polling
+└──────────┬───────────┘
+           ▼
+┌──────────────────────┐
+│ 9. Done              │  Download HTML, PDF, or PPTX
+└──────────────────────┘
 ```
 
-## Generation Engines
+## Core Flows
 
-### Claude PPTX Engine (Supabase Edge Functions)
-Uses Claude's PPTX Skill to generate PowerPoint files directly. Slower but produces editable PPTX files.
+### Flow 1: Background Template Preparation (PPTX → HTML)
 
-### Claude HTML Engine (Python FastAPI Backend)
-Uses Claude Vision to convert PPTX templates to HTML, then populates with project data. Faster and produces HTML/PDF output.
-
-**Pipeline**:
-```
-PPTX Template → PDF → PNG slides → Claude Vision → HTML Template → Data Population → HTML/PDF
-```
-
-## Background Template Preparation (Optimization)
-
-To improve UX, the PPTX → HTML conversion runs in the background immediately after template upload. This allows users to continue with other steps while the conversion happens.
-
-### Architecture
+This optimization runs immediately after template upload to pre-convert PPTX to HTML, making subsequent steps faster.
 
 ```
 Frontend                              Python Backend
    │
-   ├──► Upload Template ─────────────► Template stored in Supabase Storage
+   ├──► uploadTemplate(file) ────────► Stores PPTX in Supabase Storage
    │         │
    │         ▼
-   ├──► POST /prepare-template ──────► Background task starts:
-   │    (fire-and-forget)              - Download PPTX from Storage
-   │                                   - Convert PPTX → PDF → PNG
-   │                                   - Send PNGs to Claude Vision
-   │                                   - Generate HTML template
-   │                                   - Store HTML, PNGs in Storage
-   │                                   - Update session status
+   ├──► POST /prepare-template ──────► Background task:
+   │    (fire-and-forget)              1. Download PPTX
+   │                                   2. Convert PPTX → PDF → PNG
+   │                                   3. Send PNGs to Claude Vision
+   │                                   4. Generate exact HTML replica
+   │                                   5. Store HTML in Storage
+   │                                   6. Update session status → 'completed'
    │
-   │    [User continues with other steps]
+   │    [User continues with steps]
    │
-   └──► POST /template-preparation-status ◄──► Check status (polling)
+   └──► useMapping.waitForTemplatePreparation()
+        (polls until completed/failed/timeout)
 ```
 
-### Database Fields
+**Key Insight**: Claude Vision generates an EXACT REPLICA of the PPTX - no placeholders. The actual text, dates, numbers, and names from the original are preserved. Field identification happens later in `analyze-template`.
 
-```sql
--- In sessions table
-html_template_url TEXT,              -- URL to generated HTML
-template_png_urls JSONB,             -- Array of PNG URLs
-template_pdf_url TEXT,               -- URL to PDF
-template_preparation_status TEXT,    -- pending/processing/completed/failed
-template_preparation_error TEXT      -- Error message if failed
-```
-
-### Python Backend Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/prepare-template` | POST | Start background PPTX → HTML conversion |
-| `/template-preparation-status` | POST | Check preparation status |
-| `/list-slides-from-html` | POST | List slides from pre-generated HTML |
-
-### Frontend Integration
-
-```typescript
-// useUpload.ts - Trigger preparation after upload
-const path = await uploadTemplate(file)
-startTemplatePreparation(sessionId).catch(console.warn)
-
-// useTemplatePreparation.ts - Poll status
-const { status, isReady, isProcessing, error } = useTemplatePreparation(sessionId)
-
-// useMapping.ts - Use HTML if available
-if (prepStatus.status === 'completed') {
-  response = await listSlidesFromHtml(sessionId)  // Fast: parses HTML
-} else {
-  response = await listTemplateSlides(sessionId)  // Slow: parses PPTX
-}
-```
-
-### Edge Function: analyze-template
-
-The `analyze-template` function now has two paths:
-
-1. **Optimized path** (HTML available): Reads HTML from Storage, sends text to Claude (no code execution)
-2. **Legacy path** (HTML not available): Uploads PPTX to Anthropic, uses code execution
-
-```typescript
-// Check if HTML is ready
-if (htmlTemplateUrl && preparationStatus === 'completed') {
-  // Use HTML - faster, no code execution needed
-  const response = await client.messages.create({
-    model: "claude-sonnet-4-5-20250929",
-    messages: [{ role: 'user', content: `Analyze this HTML...\n${htmlContent}` }],
-    tools: [{ name: "submit_analysis", input_schema: ANALYSIS_SCHEMA }]
-  })
-} else {
-  // Fall back to PPTX with code execution
-  const response = await client.beta.messages.create({
-    betas: ["code-execution-2025-08-25", "files-api-2025-04-14"],
-    // ... upload PPTX and analyze with python-pptx
-  })
-}
-```
-
-### Benefits
-
-1. **No blocking wait**: User continues while conversion happens
-2. **Faster analysis**: HTML analysis is ~10x faster than PPTX code execution
-3. **Reusable HTML**: Same HTML can be used for listing slides and final generation
-4. **Graceful fallback**: If preparation fails, falls back to legacy PPTX path
-
-## PPTX Generation Architecture (Job-Based Polling)
-
-Due to Claude PPTX Skill taking 60-180 seconds, we use an async job-based architecture:
+### Flow 2: Template Analysis (Field Detection)
 
 ```
-Frontend                              Supabase
+Frontend                              analyze-template Edge Function
    │
-   ├──► generate-claude-pptx ────────► Creates job in DB
-   │         │                         Returns jobId immediately (~1s)
-   │         ▼
-   ├──► process-pptx-job ────────────► Processes in background (up to 150s)
-   │    (fire-and-forget)              [STEP 1/6] Calling Claude API...
-   │                                   [STEP 2/6] Claude responded in XXs
-   │                                   [STEP 3/6] Downloading file...
-   │                                   [STEP 4/6] Uploading to storage...
-   │                                   [STEP 5/6] Saving report record...
-   │                                   [STEP 6/6] Marking job completed
+   ├──► analyzeTemplate(path, slideNumbers) ──►
+   │                                   │
+   │                                   ▼
+   │                          1. Load HTML from Storage (optimized path)
+   │                             OR parse PPTX (fallback path)
+   │                          2. Filter to user-selected slides
+   │                          3. Send to Claude with ANALYSIS_PROMPT
+   │                          4. Claude compares structurally similar slides:
+   │                             - Slide 1: "Project: Alpha", "Budget: $50K"
+   │                             - Slide 2: "Project: Beta", "Budget: $75K"
+   │                             → Identifies: project_name, budget fields
+   │                          5. Returns field definitions
    │
-   └──► check-job-status ◄───────────► Poll every 3s until completed/failed
-        (polling loop, max 3 min)
+   └──◄──────────────────────────────────────◄──┘
 ```
 
-### Why This Architecture?
-
-1. **Supabase Edge Functions timeout**: Even on Pro plan, functions timeout at 150s
-2. **Claude PPTX Skill is slow**: With code execution, it takes 60-180s depending on data size
-3. **Fire-and-forget from client**: The frontend triggers `process-pptx-job` and immediately starts polling
-4. **Job status in database**: Job state is persisted, so even if polling disconnects, state is preserved
-
-### Token Limits for Timeout Prevention
-
-With 150s timeout, we limit data to ~12k tokens (was 25k, caused timeouts):
-
-```typescript
-const MAX_DATA_TOKENS = 12000
-
-// Compression steps:
-// 1. Apply long text strategy (user-selected)
-// 2. Compress to 50 char strings
-// 3. If still > 12k, compress to 30 char strings
-// 4. If still > 12k, limit number of projects
-// 5. Final safety: max 4 projects if > 15k tokens
-```
-
-## Key Edge Functions
-
-### `generate-claude-pptx`
-Creates a generation job and returns immediately.
-
-**Input**: Session ID (via header)
-**Output**: `{ success: true, jobId: "uuid" }`
-
-**Process**:
-1. Get session with `fetched_projects_data`
-2. Get mapping with `mapping_json`, `long_text_strategy`
-3. Create job in `generation_jobs` table with input data snapshot
-4. Return jobId immediately (frontend triggers processing)
-
-### `process-pptx-job`
-Actually generates the PPTX using Claude. Called by frontend after receiving jobId.
-
-**Input**: `{ jobId: "uuid" }`
-**Output**: Updates job status in database
-
-**Process**:
-1. Mark job as 'processing'
-2. Apply long text strategy to data
-3. Compress data aggressively (12k token limit)
-4. Call Claude with PPTX Skill
-5. Download file from Anthropic Files API
-6. Upload to Supabase Storage
-7. Save report reference
-8. Mark job as 'completed' with result
-
-**Logs**:
-```
-[STEP 1/6] Calling Claude API with PPTX Skill...
-[STEP 2/6] Claude API responded in XXXms (XX.Xs)
-[STEP 3/6] Found file_id: xxx, downloading from Anthropic...
-[STEP 4/6] Downloaded file (XX KB), uploading to Supabase Storage...
-[STEP 5/6] Uploaded to storage: xxx, saving report record...
-[STEP 6/6] Marking job as completed...
-✅ Job xxx completed successfully in XX.Xs
-```
-
-### `check-job-status`
-Polling endpoint to check job progress.
-
-**Input**: `{ jobId: "uuid" }`
-**Output**: `{ success: true, job: { id, status, result, error, ... } }`
-
-### `list-smartviews`
-Lists all available project-type smartviews from AirSaas.
-
-**Input**: None (uses `AIRSAAS_API_KEY` from environment)
-**Output**: `{ success: true, smartviews: [...], total: number }`
-
-**Process**:
-1. Calls AirSaas `/v1/smartviews/?type=project` with pagination
-2. Collects all smartviews across pages
-3. Returns sorted by name
-
-### `get-smartview-projects`
-Gets the list of projects contained in a smartview.
-
-**Input**: `{ smartviewId: "uuid" }`
-**Output**: `{ success: true, projects: [{ id, name, short_id }], total: number }`
-
-**Process**:
-1. Calls AirSaas `/v1/smartviews/{id}/item_ids/` to get project IDs
-2. Fetches basic info (name, short_id) for each project in batches
-3. Returns project list for display in frontend
-
-### `fetch-projects`
-Downloads full project data from AirSaas API and stores in session.
-
-**Input**: `smartviewConfig` with smartview info and project list (or legacy `projectsConfig`)
-**Output**: Saves to `sessions.fetched_projects_data`
-
-**Supported Formats**:
-```typescript
-// New format (preferred)
-{ smartviewConfig: { smartview_id, smartview_name, projects: [...] } }
-
-// Legacy format (deprecated)
-{ projectsConfig: { workspace, projects: [...] } }
-```
-
-### `copy-mapping`
-Copies mapping configuration AND project data from a previous session.
-
-**Input**: `sourceMappingId`
-**Actions**:
-1. Copies `mapping_json`, `template_path`, `long_text_strategy` to new mapping
-2. Copies `fetched_projects_data` from source session to current session
-
-### `copy-fetched-data`
-Copies project data between sessions (used when reusing previous fetch).
-
-**Input**: `sourceSessionId`
-**Action**: Copies `fetched_projects_data` from source to current session
-
-## Python Backend (Claude HTML Engine)
-
-The Python backend handles HTML/PDF report generation using Claude Vision.
-
-### Architecture
+### Flow 3: HTML Report Generation (Claude HTML Engine)
 
 ```
 Frontend                              Python Backend
    │
-   ├──► POST /generate-html ─────────► Creates job in Supabase DB
+   ├──► POST /generate-html ─────────► Creates job in DB
    │         │                         Returns jobId immediately
    │         ▼
-   │    Background Task ─────────────► Processes generation:
-   │                                   [STEP 1/6] Load session data
+   │    Background Task ─────────────► [STEP 1/6] Load session data
    │                                   [STEP 2/6] Validate projects
-   │                                   [STEP 3/6] Download template (PPTX)
-   │                                   [STEP 4/6] Convert PPTX → PDF → PNG
-   │                                   [STEP 5/6] Claude Vision → HTML template
-   │                                   [STEP 6/6] Populate HTML + generate PDF
+   │                                   [STEP 3-5] Use cached HTML template
+   │                                              (or convert PPTX if not cached)
+   │                                   [STEP 6/6] Populate HTML with Claude:
+   │                                              - SLIDE 1: Portfolio Overview (all projects)
+   │                                              - SLIDES 2-N: Per-project slides
+   │                                              - LAST SLIDE: Data Notes
+   │                                   Upload HTML, PDF, PPTX to Storage
    │
-   └──► POST /job-status ◄───────────► Poll every 3s until completed/failed
-        (polling loop, max 5 min)
+   └──► POST /job-status ◄───────────► Poll every 3s until completed
 ```
 
-### Key Endpoints
+**Multi-Project Report Structure** (MANDATORY):
+1. **First Slide**: Portfolio Overview - table/grid of ALL projects with Status, Mood, Progress %
+2. **Middle Slides**: Complete template set repeated for each project
+3. **Last Slide**: Data Notes - timestamp + list of missing fields
+
+## Database Schema
+
+### `sessions` table
+| Column | Type | Description |
+|--------|------|-------------|
+| id | UUID | Session identifier |
+| current_step | TEXT | Current workflow step |
+| template_path | TEXT | Path to uploaded PPTX |
+| fetched_projects_data | JSONB | **Single source of truth for project data** |
+| html_template_url | TEXT | URL to pre-generated HTML template |
+| template_png_urls | JSONB | Array of slide PNG URLs |
+| template_pdf_url | TEXT | URL to template PDF |
+| template_preparation_status | TEXT | 'pending' \| 'processing' \| 'completed' \| 'failed' |
+| template_preparation_error | TEXT | Error message if failed |
+| created_at, updated_at | TIMESTAMP | Timestamps |
+
+### `mappings` table
+| Column | Type | Description |
+|--------|------|-------------|
+| id | UUID | Primary key |
+| session_id | UUID | Foreign key to sessions |
+| mapping_json | JSONB | Field mapping configuration |
+| template_path | TEXT | Path to template used |
+| long_text_strategy | TEXT | 'summarize' \| 'ellipsis' \| 'omit' |
+| created_at | TIMESTAMP | Creation time |
+
+### `generation_jobs` table
+| Column | Type | Description |
+|--------|------|-------------|
+| id | UUID | Job identifier |
+| session_id | UUID | Foreign key to sessions |
+| status | TEXT | 'pending' \| 'processing' \| 'completed' \| 'failed' |
+| engine | TEXT | 'claude-html' or 'claude-pptx' |
+| input_data | JSONB | Snapshot of mapping and data |
+| result | JSONB | Output URLs and metadata |
+| error | TEXT | Error message if failed |
+| created_at, started_at, completed_at | TIMESTAMP | Timing info |
+
+## Python Backend Endpoints
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/generate-html` | POST | Create HTML generation job (uses cached HTML if available) |
-| `/job-status` | POST | Check job status |
+| `/` | GET | API info |
+| `/health` | GET | Health check |
 | `/prepare-template` | POST | Start background PPTX → HTML conversion |
-| `/template-preparation-status` | POST | Check template preparation status |
+| `/template-preparation-status` | POST | Check preparation status |
 | `/list-slides` | POST | List slides from PPTX (legacy) |
 | `/list-slides-from-html` | POST | List slides from pre-generated HTML (optimized) |
-| `/analyze-template` | POST | Analyze PPTX and generate HTML template |
+| `/generate-html` | POST | Create HTML generation job (async) |
+| `/job-status` | POST | Check job status |
+| `/analyze-template` | POST | Analyze PPTX and generate HTML (legacy, not used in main flow) |
+| `/preview-template` | GET | Preview HTML template before population |
 | `/generate-direct` | POST | Synchronous generation (testing only) |
-| `/health` | GET | Health check |
 
-### PDF Generation
+## Edge Functions
 
-The backend can optionally generate PDF from HTML using WeasyPrint:
-
-```python
-# Optional - requires system libraries (GLib, Pango, Cairo)
-PDF_GENERATION_AVAILABLE = False
-try:
-    from app.services.pdf_generator import html_to_pdf
-    PDF_GENERATION_AVAILABLE = True
-except (ImportError, OSError):
-    pass  # PDF generation disabled
-```
-
-**Job Result**:
-```json
-{
-  "reportId": "uuid",
-  "htmlUrl": "https://storage.../report.html",
-  "pdfUrl": "https://storage.../report.pdf",  // null if WeasyPrint unavailable
-  "templateHtmlUrl": "https://storage.../template.html",
-  "templatePdfUrl": "https://storage.../template.pdf",
-  "projectCount": 5,
-  "slideCount": 10
-}
-```
-
-### Running the Backend
-
-```bash
-cd backend
-
-# Create virtual environment
-python -m venv .venv
-source .venv/bin/activate  # macOS/Linux
-# .venv\Scripts\activate   # Windows
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Install system dependencies for PDF generation (optional)
-# macOS:
-brew install poppler glib pango cairo
-
-# Ubuntu:
-# apt-get install poppler-utils libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf2.0-0
-
-# Run server
-uvicorn app.main:app --reload --port 8000
-```
-
-### Environment Variables
-
-Create `backend/.env`:
-```
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_KEY=your-service-role-key
-ANTHROPIC_API_KEY=sk-ant-xxx
-```
-
-## Frontend State Management
-
-### localStorage Persistence
-Session state is persisted to localStorage via `storage.ts`:
-- `sessionId` - Current session UUID
-- `lastTemplateId` - Last used template path
-- `lastMappingId` - Last mapping ID for reuse
-- `lastFetchedDataId` - Last session ID with fetched data
-- `hasFetchedData` - Whether current session has data
-- `smartviewSelection` - Selected smartview and its projects
-- `projectsConfig` - **@deprecated** (kept for backward compatibility)
-
-### Key Hooks
-
-- `useSession` - Manages session state and step navigation
-- `useMapping` - Handles the mapping Q&A flow
-- `useGenerate` - Manages report generation with polling
-- `useUpload` - Handles template file uploads
-- `useTemplatePreparation` - Tracks background PPTX → HTML conversion status
-
-### Polling in useGenerate
-
-```typescript
-// Polling configuration
-const POLL_INTERVAL = 3000 // 3 seconds
-const MAX_POLL_TIME = 3 * 60 * 1000 // 3 minutes max
-
-// Flow:
-// 1. Call generate-claude-pptx → get jobId
-// 2. triggerJobProcessing(jobId) - fire and forget
-// 3. pollJobStatus(jobId) - recursive polling until completed/failed/timeout
-```
-
-## Token Management
-
-Claude has context limits. The system manages tokens by:
-
-1. **Long Text Strategy** - User-selected (summarize/ellipsis/omit)
-2. **Data Compression** (`compressProjectData` in `_shared/anthropic.ts`):
-   - Removes metadata fields (id, type, settings, etc.)
-   - Limits array lengths (20 items max)
-   - Truncates long strings (30-50 chars for aggressive compression)
-3. **Dynamic Project Limiting** - If still too large, limits number of projects
-4. **Hard Limit** - Max 4 projects if tokens > 15k
-
-Target: ~12k tokens for data to stay under ~20k total prompt (safe for 150s timeout).
-
-## Deployment
-
-### Edge Functions
-```bash
-# Deploy all functions
-npx supabase functions deploy <function-name> --project-ref wlvpwlygitzhrkrvrfwj --use-api --no-verify-jwt
-
-# Key functions:
-npx supabase functions deploy generate-claude-pptx --project-ref wlvpwlygitzhrkrvrfwj --use-api --no-verify-jwt
-npx supabase functions deploy process-pptx-job --project-ref wlvpwlygitzhrkrvrfwj --use-api --no-verify-jwt
-npx supabase functions deploy check-job-status --project-ref wlvpwlygitzhrkrvrfwj --use-api --no-verify-jwt
-npx supabase functions deploy copy-mapping --project-ref wlvpwlygitzhrkrvrfwj --use-api --no-verify-jwt
-npx supabase functions deploy fetch-projects --project-ref wlvpwlygitzhrkrvrfwj --use-api --no-verify-jwt
-npx supabase functions deploy list-smartviews --project-ref wlvpwlygitzhrkrvrfwj --use-api --no-verify-jwt
-npx supabase functions deploy get-smartview-projects --project-ref wlvpwlygitzhrkrvrfwj --use-api --no-verify-jwt
-```
-
-Note: `--use-api` is required because Docker is not available locally.
-
-### Frontend
-```bash
-cd frontend
-npm run dev    # Development
-npm run build  # Production build
-```
-
-### Python Backend
-```bash
-cd backend
-source .venv/bin/activate
-uvicorn app.main:app --reload --port 8000
-```
-
-For production, use a process manager like `gunicorn` or deploy to a cloud platform.
+| Function | Description |
+|----------|-------------|
+| `list-smartviews` | Lists AirSaas smartviews |
+| `get-smartview-projects` | Gets projects in a smartview |
+| `fetch-projects` | Downloads full project data from AirSaas |
+| `analyze-template` | Identifies fields by comparing similar slides (uses pre-generated HTML) |
+| `mapping-batch` | Generates AI mapping suggestions for all fields |
+| `mapping-batch-submit` | Saves user's mapping choices |
+| `mapping-question` | Legacy one-by-one mapping Q&A flow |
+| `copy-mapping` | Copies mapping + data from previous session |
+| `copy-fetched-data` | Copies only project data |
+| `get-session` | Gets/updates session state |
+| `upload-template` | Registers uploaded template in session |
+| `chat` | Chat endpoint for mapping conversation |
+| `generate-claude-pptx` | Creates PPTX generation job |
+| `process-pptx-job` | Executes PPTX generation with Claude Skill |
+| `check-job-status` | Polls job status |
+| `create-eval-job` | Creates evaluation job |
+| `process-eval-job` | Evaluates generated report quality |
 
 ## Environment Variables
 
 ### Frontend (`.env.local`)
-```
+```env
 VITE_SUPABASE_URL=https://wlvpwlygitzhrkrvrfwj.supabase.co
 VITE_SUPABASE_ANON_KEY=<anon-key>
-VITE_PYTHON_BACKEND_URL=http://localhost:8000  # For claude-html engine
+VITE_PYTHON_BACKEND_URL=http://localhost:8000
 ```
 
 ### Python Backend (`.env`)
-```
+```env
 SUPABASE_URL=https://wlvpwlygitzhrkrvrfwj.supabase.co
 SUPABASE_KEY=<service-role-key>
 ANTHROPIC_API_KEY=sk-ant-xxx
 ```
 
-### Supabase Functions
+### Supabase Edge Functions
 Set in Supabase Dashboard > Settings > Edge Functions:
-- `ANTHROPIC_API_KEY` - Claude API key
-- `AIRSAAS_API_KEY` - AirSaas API key (if needed)
+- `ANTHROPIC_API_KEY`
+- `AIRSAAS_API_KEY`
 
-## Testing with cURL/Postman
+## Running the Project
 
-### Create a job
+### Frontend
 ```bash
-curl -X POST 'https://wlvpwlygitzhrkrvrfwj.supabase.co/functions/v1/generate-claude-pptx' \
-  -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer <ANON_KEY>' \
-  -H 'x-session-id: <SESSION_ID>'
+cd frontend
+npm install
+npm run dev
 ```
 
-### Process a job (set timeout to 5 min in Postman)
+### Python Backend
 ```bash
-curl -X POST 'https://wlvpwlygitzhrkrvrfwj.supabase.co/functions/v1/process-pptx-job' \
-  -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer <ANON_KEY>' \
-  -d '{"jobId": "<JOB_ID>"}'
+cd backend
+python -m venv .venv
+source .venv/bin/activate
+
+# Install Python dependencies
+pip install -r requirements.txt
+
+# Install system dependencies (macOS)
+brew install poppler glib pango cairo
+
+# Run server
+uvicorn app.main:app --reload --port 8000
 ```
 
-### Check job status
+### Deploying Edge Functions
 ```bash
-curl -X POST 'https://wlvpwlygitzhrkrvrfwj.supabase.co/functions/v1/check-job-status' \
-  -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer <ANON_KEY>' \
-  -H 'x-session-id: <SESSION_ID>' \
-  -d '{"jobId": "<JOB_ID>"}'
+npx supabase functions deploy <function-name> --project-ref wlvpwlygitzhrkrvrfwj --use-api --no-verify-jwt
 ```
 
-## Common Issues & Solutions
+## Troubleshooting
 
 ### Job stuck in "processing"
-**Cause**: Function timed out while calling Claude.
-**Solution**:
-1. Run SQL: `UPDATE generation_jobs SET status = 'failed', error = 'Timeout' WHERE status = 'processing';`
-2. Reduce data size (check token count in logs)
-3. Try again
+```sql
+UPDATE generation_jobs SET status = 'failed', error = 'Timeout' WHERE status = 'processing';
+```
 
 ### "No project data available"
-**Cause**: `sessions.fetched_projects_data` is NULL or empty.
-**Solution**: Ensure `fetch-projects` ran successfully, or that `copy-mapping` copied data from source session.
+Ensure `fetch-projects` ran successfully, or use "Use Last Mapping" which copies data.
 
-### 504 Gateway Timeout
-**Cause**: Function exceeded 150s timeout (Pro plan limit).
-**Solution**: Data is too large. Check logs for token count. Reduce `MAX_DATA_TOKENS` or limit projects.
+### Template preparation stuck
+Check Python backend logs. Common causes:
+- Claude API timeout
+- Invalid PPTX file
+- Poppler not installed (`brew install poppler`)
 
-### "No mapping found for session"
-**Cause**: Mapping wasn't created or copied for current session.
-**Solution**: Complete the mapping step or use "Use Last Mapping" which calls `copy-mapping`.
-
-### "No PPTX file generated - could not find file_id"
-**Cause**: Claude didn't generate a file (may have errored or returned text only).
-**Solution**: Check Claude response in logs. May need to adjust prompt or reduce data.
-
-### PDF generation not available (Python backend)
-**Cause**: WeasyPrint requires system libraries (GLib, Pango, Cairo) that aren't installed.
-**Solution**:
+### PDF generation not available
+Install WeasyPrint dependencies:
 ```bash
-# macOS
-brew install glib pango cairo
-
-# Ubuntu/Debian
-apt-get install libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf2.0-0
+brew install glib pango cairo  # macOS
 ```
 
-**Fallback**: If PDF generation is unavailable, the frontend will open the HTML in a new tab where users can use "Print → Save as PDF" from the browser.
-
-### PPTX to PNG conversion fails
-**Cause**: `pdf2image` requires Poppler to be installed.
-**Solution**:
-```bash
-# macOS
-brew install poppler
-
-# Ubuntu/Debian
-apt-get install poppler-utils
-```
-
-## Database Migrations
-
-### `generation_jobs` table (20250122000001)
-```sql
-CREATE TABLE IF NOT EXISTS generation_jobs (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'completed', 'failed')),
-  engine TEXT NOT NULL DEFAULT 'claude-pptx',
-  input_data JSONB,
-  result JSONB,
-  error TEXT,
-  prompt TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  started_at TIMESTAMP WITH TIME ZONE,
-  completed_at TIMESTAMP WITH TIME ZONE
-);
-
-CREATE INDEX IF NOT EXISTS idx_generation_jobs_session_status ON generation_jobs(session_id, status);
-CREATE INDEX IF NOT EXISTS idx_generation_jobs_status ON generation_jobs(status) WHERE status = 'pending';
-```
-
-### Cleanup migration (20250123000001)
-```sql
--- Remove unused columns:
--- - mappings.fetched_data: Redundant, data is in sessions.fetched_projects_data
--- - generation_jobs.updated_at: Never used
-ALTER TABLE mappings DROP COLUMN IF EXISTS fetched_data;
-ALTER TABLE generation_jobs DROP COLUMN IF EXISTS updated_at;
-```
-
-### Template preparation fields (20250202000001)
-```sql
--- Add fields for background PPTX → HTML conversion
-ALTER TABLE sessions ADD COLUMN IF NOT EXISTS html_template_url TEXT;
-ALTER TABLE sessions ADD COLUMN IF NOT EXISTS template_png_urls JSONB;
-ALTER TABLE sessions ADD COLUMN IF NOT EXISTS template_pdf_url TEXT;
-ALTER TABLE sessions ADD COLUMN IF NOT EXISTS template_preparation_status TEXT
-  DEFAULT 'pending'
-  CHECK (template_preparation_status IN ('pending', 'processing', 'completed', 'failed'));
-ALTER TABLE sessions ADD COLUMN IF NOT EXISTS template_preparation_error TEXT;
-
-CREATE INDEX IF NOT EXISTS idx_sessions_template_preparation_status
-  ON sessions(template_preparation_status)
-  WHERE template_preparation_status = 'processing';
-```
+---
 
 ## Deprecated Code
 
-The following code is deprecated and kept only for backward compatibility. Can be safely deleted after 2025-03-01.
+The following code is deprecated and should be removed after **2025-03-15**.
 
 ### Frontend Components
-- **`ProjectsConfig.tsx`** - Replaced by `SmartviewSelector.tsx`
-  - Old flow: User pastes JSON with workspace + projects array
-  - New flow: User selects a smartview from AirSaas, projects are fetched automatically
+
+| File | Status | Replacement | Reason |
+|------|--------|-------------|--------|
+| `components/projects/ProjectsConfig.tsx` | DEPRECATED | `SmartviewSelector.tsx` | Old flow required manual JSON input. New flow selects from AirSaas smartviews. |
+
+### Frontend Services & Hooks
+
+| File/Function | Status | Replacement | Reason |
+|---------------|--------|-------------|--------|
+| `session.service.ts: fetchProjects()` | DEPRECATED | `fetchProjectsFromSmartview()` | Accepted legacy `projectsConfig` format |
+| `session.service.ts: ProjectsConfig` interface | DEPRECATED | `SmartviewConfig` | Old data format |
+| `useSession.ts: setProjectsConfig()` | DEPRECATED | `setSmartviewSelection()` | Old state setter |
+
+### Frontend Types
+
+| Type | Status | Replacement | Reason |
+|------|--------|-------------|--------|
+| `ProjectsConfig` in `types/session.ts` | DEPRECATED | `SmartviewSelection` | Legacy JSON format |
+| `SessionState.projectsConfig` | DEPRECATED | `SessionState.smartviewSelection` | Old state field |
+
+### Frontend State
+
+| Storage Key | Status | Replacement | Reason |
+|-------------|--------|-------------|--------|
+| `projectsConfig` in localStorage | DEPRECATED | `smartviewSelection` | Old manual project configuration |
 
 ### Frontend Constants
-- **`AIRSAAS_PROJECTS`** in `config/constants.ts` - No longer used
-  - Was: Hardcoded default project list for the JSON input
-  - Now: Projects are fetched dynamically from smartviews
 
-### Frontend Services
-- **`fetchProjects()`** in `session.service.ts` - Use `fetchProjectsFromSmartview()` instead
-  - Accepts legacy `projectsConfig` format
-  - New function accepts `smartviewConfig` format
-
-### Types
-- **`ProjectsConfig`** interface in `session.service.ts` - Use `SmartviewConfig` instead
-- **`projectsConfig`** field in `SessionState` - Use `smartviewSelection` instead
+| Constant | Status | Replacement | Reason |
+|----------|--------|-------------|--------|
+| `AIRSAAS_PROJECTS` in `config/constants.ts` | DEPRECATED | Dynamic from smartviews | Was hardcoded default project list |
 
 ### Edge Functions
-- **`fetch-projects`** still accepts legacy `projectsConfig` format for backward compatibility
-  - Prefer sending `smartviewConfig` format
+
+| Function | Status | Notes |
+|----------|--------|-------|
+| `fetch-projects` with `projectsConfig` param | BACKWARD COMPAT | Still accepts legacy format, prefer `smartviewConfig` |
+| `generate-gamma`, `process-gamma-job` | UNUSED | Gamma API integration was removed |
+
+### Python Backend
+
+| Code | Status | Replacement | Reason |
+|------|--------|-------------|--------|
+| `/list-slides` endpoint | LEGACY | `/list-slides-from-html` | Slower PPTX parsing, use HTML when available |
+| `/generate-direct` endpoint | TESTING ONLY | `/generate-html` with jobs | Synchronous, doesn't scale |
+
+### Database
+
+| Column | Status | Reason |
+|--------|--------|--------|
+| `mappings.fetched_data` | REMOVED | Data moved to `sessions.fetched_projects_data` |
+| `generation_jobs.updated_at` | REMOVED | Never used |
+
+---
 
 ## Future Improvements
 
-1. **Streaming progress** - Use Supabase Realtime to stream job progress instead of polling
-2. **Retry logic** - Automatically retry failed jobs with backoff
-3. **Queue management** - Limit concurrent jobs per user
-4. **Caching** - Cache AirSaas responses to reduce API calls
-5. **Webhook triggers** - Use database webhooks instead of client-triggered processing
-6. **New AirSaas endpoints** - Integrate `last_weather_update` and `last_status_update` for richer data
+1. **Streaming progress**: Use Supabase Realtime instead of polling
+2. **Retry logic**: Auto-retry failed jobs with backoff
+3. **Slide selection persistence**: Save `uniqueSlideNumbers` for filtering in generation
+4. **Caching**: Cache AirSaas responses to reduce API calls
+5. **Webhooks**: Database webhooks instead of client-triggered processing

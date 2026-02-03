@@ -4,7 +4,6 @@ import { useSession } from '@hooks/useSession'
 import { useMapping } from '@hooks/useMapping'
 import { useUpload } from '@hooks/useUpload'
 import { useGenerate } from '@hooks/useGenerate'
-import { useTemplatePreparation } from '@hooks/useTemplatePreparation'
 import { updateLongTextStrategy, copyMapping, copyFetchedData, getFetchedDataInfo, fetchProjectsFromSmartview } from '@services/session.service'
 import { startTemplatePreparation } from '@services/template-preparation.service'
 import { supabase } from '@lib/supabase'
@@ -98,10 +97,6 @@ export function Home() {
     progress: uploadProgress,
     uploadTemplate,
   } = useUpload(sessionId)
-
-  // Template preparation status (for debugging/monitoring)
-  // The actual waiting happens inside useMapping.fetchSlideList
-  const { status: templatePrepStatus } = useTemplatePreparation(sessionId)
 
   const {
     generating,
